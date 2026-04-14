@@ -10,8 +10,6 @@
 
 Despliegue rápido, reproducible y entendible de un sistema syslog para laboratorio, demo o preproducción.
 
-Despliegue rápido, reproducible y entendible de un sistema syslog para laboratorio, demo o preproducción.
-
 Este repositorio está pensado para que cualquier persona del equipo pueda:
 
 - montar un servidor syslog en minutos
@@ -31,7 +29,7 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 - [📂 Dónde están los logs](#-dónde-están-los-logs)
 - [🧾 Despliegue básico de syslog](#-despliegue-básico-de-syslog)
 - [🔐 Modo TLS (seguro)](#-modo-tls-seguro)
-- [🧪 DEMO PARA JEFE / CLIENTE](#-demo-para-jefe--cliente)
+- [🧪 DEMO ](#-demo-para-cliente)
 - [📄 Archivos importantes](#-archivos-importantes)
 - [🛠️ Troubleshooting](#️-troubleshooting)
 - [❓ FAQ](#-faq)
@@ -361,7 +359,7 @@ tail -f /var/log/remote/*/*.log
 ---
 
 <details>
-<summary><strong>🧪 DEMO PARA JEFE / CLIENTE</strong></summary>
+<summary><strong>🧪 DEMO </strong></summary>
 
 Esta es una demo rápida que suele funcionar muy bien.
 
