@@ -1,4 +1,14 @@
+
 # 🧾 Instalación Syslog sin Dolores de Cabeza
+
+![Platform](https://img.shields.io/badge/platform-Ubuntu%20Server%20%2F%20Kali-blue)
+![Shell](https://img.shields.io/badge/shell-bash-informational)
+![Syslog](https://img.shields.io/badge/syslog-rsyslog-success)
+![Security](https://img.shields.io/badge/security-TLS%20%2F%20mTLS-orange)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-black)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+Despliegue rápido, reproducible y entendible de un sistema syslog para laboratorio, demo o preproducción.
 
 Despliegue rápido, reproducible y entendible de un sistema syslog para laboratorio, demo o preproducción.
 
