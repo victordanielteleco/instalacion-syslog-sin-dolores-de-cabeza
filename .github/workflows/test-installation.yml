@@ -1,0 +1,210 @@
+name: Probar instalación simulada en Ubuntu
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  simulated-install:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+
+    steps:
+      - name: Instalar herramientas base del contenedor
+        run: |
+          apt-get update
+          apt-get install -y bash coreutils grep sed gawk findutils passwd openssl
+
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Dar permisos de ejecución a los scripts
+        run: |
+          chmod +x scripts/setup_syslog_server_v5.sh
+          chmod +x scripts/setup_syslog_client_v5.sh
+
+      - name: Crear usuario y grupo esperados por rsyslog
+        run: |
+          getent group adm >/dev/null 2>&1 || groupadd adm
+          id -u syslog >/dev/null 2>&1 || useradd -r -g adm syslog
+
+      - name: Crear entorno de comandos simulados
+        run: |
+          mkdir -p /mockbin
+
+          cat > /mockbin/apt-get <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK apt-get] $@"
+          exit 0
+          EOF
+
+          cat > /mockbin/systemctl <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK systemctl] $@"
+          if [ "$1" = "is-active" ]; then
+            echo "active"
+          fi
+          exit 0
+          EOF
+
+          cat > /mockbin/ufw <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK ufw] $@"
+          if [ "$1" = "status" ]; then
+            echo "Status: active"
+            echo "To                         Action      From"
+            echo "10514/tcp                  DENY        Anywhere"
+            echo "6514/tcp                   DENY        Anywhere"
+          fi
+          exit 0
+          EOF
+
+          cat > /mockbin/rsyslogd <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK rsyslogd] $@"
+          exit 0
+          EOF
+
+          cat > /mockbin/ss <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK ss] $@"
+          echo "tcp LISTEN 0 128 *:10514 *:* users:(('rsyslogd',pid=123,fd=5))"
+          echo "tcp LISTEN 0 128 *:6514 *:* users:(('rsyslogd',pid=123,fd=6))"
+          exit 0
+          EOF
+
+          cat > /mockbin/logger <<'EOF'
+          #!/usr/bin/env bash
+          echo "[MOCK logger] $@"
+          exit 0
+          EOF
+
+          chmod +x /mockbin/*
+
+      - name: Ejecutar pruebas del servidor en modo basic
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh basic \
+            --allowed-ips 172.16.3.10,172.16.3.11 \
+            --port 10514 \
+            --run-test
+
+          test -d /var/log/remote
+          test -f /etc/rsyslog.d/10-remote.conf
+          test -f /etc/logrotate.d/syslog-remote
+          test -f /root/syslog_server_report.txt
+          grep -q 'module(load="imtcp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'ruleset(name="remote_store")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'DynaFile="RemoteLogs"' /etc/rsyslog.d/10-remote.conf
+
+      - name: Ejecutar pruebas del servidor en modo tls
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh tls \
+            --allowed-ips 172.16.3.10 \
+            --port 6514 \
+            --server-name syslog.local \
+            --server-ip 172.16.3.2 \
+            --server-sans syslog01.empresa.local,logs.local \
+            --tls-clients kali01,ubuntu01 \
+            --run-test
+
+          test -f /etc/rsyslog.d/10-tls.conf
+          test -f /etc/rsyslog-certs/ca.crt
+          test -f /etc/rsyslog-certs/server.crt
+          test -f /etc/rsyslog-certs/kali01.crt
+          test -f /etc/rsyslog-certs/ubuntu01.crt
+          test -f /root/syslog-client-bundles/kali01/client.crt
+          test -f /root/syslog-client-bundles/ubuntu01/client.crt
+          grep -q 'module(load="gtls")' /etc/rsyslog.d/10-tls.conf
+          grep -q 'StreamDriverAuthMode="x509/name"' /etc/rsyslog.d/10-tls.conf
+          grep -q 'PermittedPeer=' /etc/rsyslog.d/10-tls.conf
+
+      - name: Comprobar contenido SAN de extensiones OpenSSL generadas
+        run: |
+          test -f /etc/rsyslog-certs/server_ext.cnf
+          grep -q 'DNS.1=syslog.local' /etc/rsyslog-certs/server_ext.cnf
+          grep -q 'IP.1=172.16.3.2' /etc/rsyslog-certs/server_ext.cnf
+
+          test -f /etc/rsyslog-certs/kali01_ext.cnf
+          grep -q 'extendedKeyUsage=clientAuth' /etc/rsyslog-certs/kali01_ext.cnf
+
+      - name: Ejecutar pruebas del cliente en modo basic
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh basic \
+            --server 172.16.3.2 \
+            --port 10514 \
+            --run-test
+
+          test -f /etc/rsyslog.d/20-forward.conf
+          test -f /root/syslog_client_report.txt
+          grep -q '@@172.16.3.2:10514' /etc/rsyslog.d/20-forward.conf
+
+      - name: Preparar certificados ficticios para prueba cliente TLS
+        run: |
+          mkdir -p /tmp/client-test
+          printf '%s\n' 'FAKE-CA' > /tmp/client-test/ca.crt
+          printf '%s\n' 'FAKE-CLIENT-CERT' > /tmp/client-test/client.crt
+          printf '%s\n' 'FAKE-CLIENT-KEY' > /tmp/client-test/client.key
+
+      - name: Ejecutar pruebas del cliente en modo tls
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh tls \
+            --server 172.16.3.2 \
+            --port 6514 \
+            --ca /tmp/client-test/ca.crt \
+            --cert /tmp/client-test/client.crt \
+            --key /tmp/client-test/client.key \
+            --peer syslog.local \
+            --run-test
+
+          test -f /etc/rsyslog.d/20-tls.conf
+          test -f /etc/rsyslog-certs/ca.crt
+          test -f /etc/rsyslog-certs/client.crt
+          test -f /etc/rsyslog-certs/client.key
+          grep -q 'module(load="gtls")' /etc/rsyslog.d/20-tls.conf
+          grep -q 'StreamDriverPermittedPeers=\["syslog.local"\]' /etc/rsyslog.d/20-tls.conf
+
+      - name: Ejecutar pruebas del cliente en modo disable
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh disable
+
+          test ! -f /etc/rsyslog.d/20-forward.conf
+          test ! -f /etc/rsyslog.d/20-tls.conf
+
+      - name: Probar regeneración de certificados en el servidor
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh tls \
+            --allowed-ips 172.16.3.10 \
+            --port 6514 \
+            --server-name syslog.local \
+            --server-ip 172.16.3.2 \
+            --tls-clients kali01 \
+            --regenerate-certs
+
+          test -f /etc/rsyslog-certs/ca.crt
+          test -f /etc/rsyslog-certs/server.crt
+          test -f /etc/rsyslog-certs/kali01.crt
+
+      - name: Mostrar resumen de archivos generados
+        run: |
+          echo "=== /etc/rsyslog.d ==="
+          ls -la /etc/rsyslog.d || true
+          echo
+          echo "=== /etc/rsyslog-certs ==="
+          ls -la /etc/rsyslog-certs || true
+          echo
+          echo "=== /root/syslog-client-bundles ==="
+          find /root/syslog-client-bundles -maxdepth 3 -type f | sort || true

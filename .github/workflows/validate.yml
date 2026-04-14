@@ -1,0 +1,99 @@
+name: Validar repositorio syslog
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias de validación
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Comprobar estructura esperada del repositorio
+        run: |
+          echo "Comprobando estructura del repositorio..."
+
+          test -f README.md
+          test -f .gitignore
+          test -f CHANGELOG.md
+          test -f LICENSE
+
+          test -f scripts/setup_syslog_server_v5.sh
+          test -f scripts/setup_syslog_client_v5.sh
+
+          test -f docs/despliegue-basico.md
+          test -f docs/despliegue-tls.md
+
+          test -f .github/workflows/validate.yml
+          test -f .github/workflows/test-installation.yml
+
+          echo "OK: estructura correcta"
+
+      - name: Comprobar permisos ejecutables en scripts
+        run: |
+          echo "Comprobando permisos de ejecución..."
+
+          test -x scripts/setup_syslog_server_v5.sh || (echo "ERROR: setup_syslog_server_v5.sh no es ejecutable" && exit 1)
+          test -x scripts/setup_syslog_client_v5.sh || (echo "ERROR: setup_syslog_client_v5.sh no es ejecutable" && exit 1)
+
+          echo "OK: permisos correctos"
+
+      - name: Validar sintaxis Bash
+        run: |
+          echo "Validando sintaxis Bash..."
+
+          bash -n scripts/setup_syslog_server_v5.sh
+          bash -n scripts/setup_syslog_client_v5.sh
+
+          echo "OK: sintaxis válida"
+
+      - name: Ejecutar ShellCheck sobre scripts
+        run: |
+          echo "Ejecutando ShellCheck..."
+
+          shellcheck scripts/setup_syslog_server_v5.sh
+          shellcheck scripts/setup_syslog_client_v5.sh
+
+          echo "OK: shellcheck sin errores"
+
+      - name: Comprobar referencias importantes en README
+        run: |
+          echo "Comprobando contenido importante del README..."
+
+          grep -q "Instalación Syslog sin Dolores de Cabeza" README.md
+          grep -q "Troubleshooting" README.md
+          grep -q "DEMO PARA JEFE / CLIENTE" README.md
+          grep -q "/var/log/remote" README.md
+          grep -q "setup_syslog_server_v5.sh" README.md
+          grep -q "setup_syslog_client_v5.sh" README.md
+
+          echo "OK: README contiene secciones clave"
+
+      - name: Comprobar que no hay claves privadas ni bundles sensibles en el repo
+        run: |
+          echo "Buscando ficheros sensibles que no deberían estar versionados..."
+
+          ! find . -type f \( -name "*.key" -o -name "*.pem" -o -name "*.p12" -o -name "*.pfx" \) \
+            ! -path "./.git/*" \
+            | grep .
+
+          echo "OK: no se han encontrado claves privadas ni bundles sensibles"
+
+      - name: Mostrar resumen final
+        run: |
+          echo "Resumen de validación:"
+          echo "- Estructura del repo: OK"
+          echo "- Permisos scripts: OK"
+          echo "- Sintaxis Bash: OK"
+          echo "- ShellCheck: OK"
+          echo "- README: OK"
+          echo "- Ficheros sensibles: OK"

@@ -1,0 +1,29 @@
+# Archivos temporales de editores
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Python cache por si se usa algo auxiliar en el futuro
+__pycache__/
+*.pyc
+
+# Logs locales accidentales
+*.log
+
+# Backups accidentales
+*.bak
+*.tmp
+*.old
+
+# Certificados o claves que JAMÁS deberían subirse
+*.key
+*.csr
+*.crt
+*.pem
+*.p12
+*.pfx
+
+# Directorios generados localmente durante pruebas
+syslog-client-bundles/
+rsyslog-certs/
