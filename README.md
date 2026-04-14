@@ -1,4 +1,3 @@
-
 # 🧾 Instalación Syslog sin Dolores de Cabeza
 
 ![Platform](https://img.shields.io/badge/platform-Ubuntu%20Server%20%2F%20Kali-blue)
@@ -20,25 +19,26 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 
 ## 📚 Índice rápido
 
-- [✨ Qué incluye](#-qué-incluye)
-- [📦 Estructura del repositorio](#-estructura-del-repositorio)
-- [✅ Requisitos](#-requisitos)
-- [⚙️ Modos disponibles](#️-modos-disponibles)
-- [🚀 Instalación recomendada](#-instalación-recomendada)
-- [⚡ Despliegue rápido](#-despliegue-rápido)
-- [📂 Dónde están los logs](#-dónde-están-los-logs)
-- [🧾 Despliegue básico de syslog](#-despliegue-básico-de-syslog)
-- [🔐 Modo TLS (seguro)](#-modo-tls-seguro)
-- [🧪 DEMO ](#-demo-para-cliente)
-- [📄 Archivos importantes](#-archivos-importantes)
-- [🛠️ Troubleshooting](#️-troubleshooting)
-- [❓ FAQ](#-faq)
-- [⚠️ Seguridad](#️-seguridad)
-- [⚙️ Integración continua](#️-integración-continua)
-- [📌 Recomendación práctica](#-recomendación-práctica)
+- [✨ Qué incluye](#que-incluye)
+- [📦 Estructura del repositorio](#estructura-del-repositorio)
+- [✅ Requisitos](#requisitos)
+- [⚙️ Modos disponibles](#modos-disponibles)
+- [🚀 Instalación recomendada](#instalacion-recomendada)
+- [⚡ Despliegue rápido](#despliegue-rapido)
+- [📂 Dónde están los logs](#donde-estan-los-logs)
+- [🧾 Despliegue básico de syslog](#despliegue-basico-de-syslog)
+- [🔐 Modo TLS (seguro)](#modo-tls-seguro)
+- [🧪 Demo](#demo)
+- [📄 Archivos importantes](#archivos-importantes)
+- [🛠️ Troubleshooting](#troubleshooting)
+- [❓ FAQ](#faq)
+- [⚠️ Seguridad](#seguridad)
+- [⚙️ Integración continua](#integracion-continua)
+- [📌 Recomendación práctica](#recomendacion-practica)
 
 ---
 
+<a id="que-incluye"></a>
 ## ✨ Qué incluye
 
 - Configuración automática de `rsyslog`
@@ -55,6 +55,7 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 
 ---
 
+<a id="estructura-del-repositorio"></a>
 <details open>
 <summary><strong>📦 Estructura del repositorio</strong></summary>
 
@@ -80,6 +81,7 @@ instalacion-syslog-sin-dolores-de-cabeza/
 
 ---
 
+<a id="requisitos"></a>
 <details>
 <summary><strong>✅ Requisitos</strong></summary>
 
@@ -100,6 +102,7 @@ instalacion-syslog-sin-dolores-de-cabeza/
 
 ---
 
+<a id="modos-disponibles"></a>
 <details>
 <summary><strong>⚙️ Modos disponibles</strong></summary>
 
@@ -118,6 +121,7 @@ instalacion-syslog-sin-dolores-de-cabeza/
 
 ---
 
+<a id="instalacion-recomendada"></a>
 <details open>
 <summary><strong>🚀 Instalación recomendada</strong></summary>
 
@@ -133,6 +137,7 @@ chmod +x scripts/*.sh
 
 ---
 
+<a id="despliegue-rapido"></a>
 <details open>
 <summary><strong>⚡ Despliegue rápido</strong></summary>
 
@@ -170,6 +175,7 @@ tail -f /var/log/remote/*/*.log
 
 ---
 
+<a id="donde-estan-los-logs"></a>
 <details>
 <summary><strong>📂 Dónde están los logs</strong></summary>
 
@@ -191,6 +197,7 @@ Esto facilita mucho localizar qué equipo generó cada evento y qué servicio lo
 
 ---
 
+<a id="despliegue-basico-de-syslog"></a>
 <details>
 <summary><strong>🧾 Despliegue básico de syslog</strong></summary>
 
@@ -265,6 +272,7 @@ No lo uses como modo final de producción. Para eso, usa TLS.
 
 ---
 
+<a id="modo-tls-seguro"></a>
 <details>
 <summary><strong>🔐 Modo TLS (seguro)</strong></summary>
 
@@ -358,8 +366,9 @@ tail -f /var/log/remote/*/*.log
 
 ---
 
+<a id="demo"></a>
 <details>
-<summary><strong>🧪 DEMO </strong></summary>
+<summary><strong>🧪 DEMO</strong></summary>
 
 Esta es una demo rápida que suele funcionar muy bien.
 
@@ -402,6 +411,7 @@ Esto demuestra muy bien la centralización de logs y la detección de actividad 
 
 ---
 
+<a id="archivos-importantes"></a>
 <details>
 <summary><strong>📄 Archivos importantes</strong></summary>
 
@@ -421,6 +431,7 @@ Esto demuestra muy bien la centralización de logs y la detección de actividad 
 
 ---
 
+<a id="troubleshooting"></a>
 <details>
 <summary><strong>🛠️ Troubleshooting</strong></summary>
 
@@ -510,6 +521,7 @@ Revisa los backups en:
 
 ---
 
+<a id="faq"></a>
 <details>
 <summary><strong>❓ FAQ</strong></summary>
 
@@ -557,6 +569,7 @@ En el servidor, dentro de:
 
 ---
 
+<a id="seguridad"></a>
 <details>
 <summary><strong>⚠️ Seguridad</strong></summary>
 
@@ -570,6 +583,7 @@ En el servidor, dentro de:
 
 ---
 
+<a id="integracion-continua"></a>
 <details>
 <summary><strong>⚙️ Integración continua</strong></summary>
 
@@ -585,6 +599,7 @@ Esto ayuda a detectar errores antes de usar los scripts en laboratorio o preprod
 
 ---
 
+<a id="recomendacion-practica"></a>
 <details open>
 <summary><strong>📌 Recomendación práctica</strong></summary>
 
