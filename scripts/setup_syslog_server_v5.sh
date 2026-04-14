@@ -280,8 +280,9 @@ install_packages() {
 
 prepare_directories() {
   info "Preparando directorios..."
-  mkdir -p "${LOG_DIR}" "${CERT_DIR}" "${EXPORT_DIR}" "${BACKUP_DIR}"
+  mkdir -p "${LOG_DIR}" "${CERT_DIR}" "${EXPORT_DIR}" "${BACKUP_DIR}" /etc/rsyslog.d /etc/logrotate.d
   # Crea directorios necesarios si no existen.
+  # Añade también /etc/rsyslog.d y /etc/logrotate.d para entornos mínimos o simulados.
 
   if getent passwd syslog >/dev/null 2>&1 && getent group adm >/dev/null 2>&1; then
     # Comprueba que existen el usuario syslog y el grupo adm.

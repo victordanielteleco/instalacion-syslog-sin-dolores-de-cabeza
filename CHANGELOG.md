@@ -2,6 +2,17 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.1] - 2026-04-14
+
+### Fixed
+- Creación explícita de `/etc/rsyslog.d` en los scripts para evitar fallos en entornos mínimos o simulados
+- Creación explícita de `/etc/logrotate.d` en el script del servidor para evitar errores al escribir la configuración de rotación
+- Mejora de compatibilidad con la validación en GitHub Actions y con contenedores Ubuntu mínimos
+
+### Notes
+- No cambia el uso funcional de los scripts en Ubuntu Server o Kali reales
+- Corrige errores observados en el workflow de instalación simulada
+
 ## [1.0.0] - 2026-04-14
 
 ### Added

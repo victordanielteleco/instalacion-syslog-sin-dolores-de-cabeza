@@ -233,8 +233,9 @@ install_packages() {
 }
 
 prepare_cert_dir() {
-  mkdir -p "${CERT_DIR}" "${BACKUP_DIR}"
-  # Crea directorio de certificados y backups si no existen.
+  mkdir -p "${CERT_DIR}" "${BACKUP_DIR}" /etc/rsyslog.d
+  # Crea directorio de certificados, backups y /etc/rsyslog.d si no existen.
+  # Esto evita fallos en entornos mínimos o simulados.
 
   chmod 700 "${CERT_DIR}"
   # Permite acceso solo a root.
