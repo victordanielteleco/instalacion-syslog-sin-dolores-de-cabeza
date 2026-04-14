@@ -230,7 +230,8 @@ backup_file_if_exists() {
 
   if [[ -f "${file}" ]]; then
     # Comprueba si el fichero existe.
-    local dst="${BACKUP_DIR}/$(basename "${file}").$(timestamp).bak"
+    local dst
+    dst="${BACKUP_DIR}/$(basename "${file}").$(timestamp).bak"
     # Construye el nombre del backup.
     cp -a "${file}" "${dst}"
     # Copia conservando atributos.
@@ -442,7 +443,8 @@ remove_old_certs_if_requested() {
     # Solo actúa si se pidió regeneración.
     warn "Se ha solicitado regeneración de certificados."
 
-    local cert_backup_dir="${BACKUP_DIR}/certs_$(timestamp)"
+    local cert_backup_dir
+    cert_backup_dir="${BACKUP_DIR}/certs_$(timestamp)"
     # Crea nombre de backup para certificados.
 
     mkdir -p "${cert_backup_dir}"

@@ -210,7 +210,8 @@ backup_file_if_exists() {
 
   if [[ -f "${file}" ]]; then
     # Si el fichero existe...
-    local dst="${BACKUP_DIR}/$(basename "${file}").$(timestamp).bak"
+    local dst
+    dst="${BACKUP_DIR}/$(basename "${file}").$(timestamp).bak"
     # Construye nombre del backup.
     cp -a "${file}" "${dst}"
     # Hace copia conservando atributos.
