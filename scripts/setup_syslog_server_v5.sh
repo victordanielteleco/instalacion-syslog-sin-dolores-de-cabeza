@@ -268,7 +268,7 @@ install_packages() {
 
   info "Instalando dependencias si faltan..."
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    rsyslog ufw openssl ca-certificates coreutils grep sed gawk findutils
+    rsyslog ufw openssl ca-certificates coreutils grep sed gawk findutils util-linux
   # Instala:
   # rsyslog: servicio syslog.
   # ufw: firewall sencillo.
@@ -306,6 +306,14 @@ prepare_directories() {
   # Solo root accede al directorio de bundles exportados.
 
   ok "Directorios preparados."
+}
+
+check_log_mountpoint() {
+  if ! mountpoint -q "${LOG_DIR}"; then
+    warn "${LOG_DIR} no es un punto de montaje independiente. Los logs se guardarán en el disco del sistema."
+  else
+    ok "${LOG_DIR} está montado como punto de montaje independiente."
+  fi
 }
 
 write_logrotate() {
@@ -819,6 +827,9 @@ main() {
 
   prepare_directories
   # Prepara directorios de trabajo.
+
+  check_log_mountpoint
+  # Avisa si /var/log/remote no está montado en un disco independiente.
 
   write_logrotate
   # Configura rotación de logs.

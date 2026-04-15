@@ -2,6 +2,27 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.2] - 2026-04-15
+
+### Added
+- Aviso explícito en `README.md` indicando que el servidor escribe en `/var/log/remote` y que el uso de un segundo disco depende de que el usuario lo monte previamente
+- Guía en `README.md` para habilitar SSH en la VM antes del despliegue
+- Guía en `README.md` para preparar, montar y verificar un disco de logs en Ubuntu Server
+- Recomendación operativa de administrar la VM por SSH para facilitar el despliegue y el mantenimiento
+
+### Changed
+- `README.md` reorganizado para reflejar el flujo recomendado real: instalar Ubuntu, habilitar SSH, montar el disco de logs y después ejecutar los scripts
+- Ampliadas las secciones de troubleshooting y FAQ con comprobaciones relacionadas con `/var/log/remote` y el uso de un segundo disco
+- Ajustado el workflow de instalación simulada para declarar explícitamente la herramienta necesaria para `mountpoint` en el contenedor de pruebas
+
+### Fixed
+- Mejora técnica en `setup_syslog_server_v5.sh` para avisar cuando `/var/log/remote` no está montado como punto de montaje independiente y los logs van a parar al disco del sistema
+
+### Notes
+- No cambia el modo de uso de los scripts `basic` y `tls`
+- La mejora del script es informativa y no destructiva: avisa, pero no bloquea la instalación
+- El workflow `validate.yml` no necesita cambios porque las comprobaciones del README siguen cumpliéndose
+
 ## [1.0.1] - 2026-04-14
 
 ### Fixed

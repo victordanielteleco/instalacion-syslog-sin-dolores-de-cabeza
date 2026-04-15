@@ -15,7 +15,7 @@ jobs:
       - name: Instalar herramientas base del contenedor
         run: |
           apt-get update
-          apt-get install -y bash coreutils grep sed gawk findutils passwd openssl
+          apt-get install -y bash coreutils grep sed gawk findutils passwd openssl util-linux
 
       - name: Clonar repositorio
         uses: actions/checkout@v4

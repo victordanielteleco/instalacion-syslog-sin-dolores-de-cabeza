@@ -24,6 +24,9 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 - [✅ Requisitos](#requisitos)
 - [⚙️ Modos disponibles](#modos-disponibles)
 - [🚀 Instalación recomendada](#instalacion-recomendada)
+- [🔔 Aviso sobre almacenamiento de logs](#aviso-sobre-almacenamiento-de-logs)
+- [🔑 Habilitar SSH en la VM](#habilitar-ssh-en-la-vm)
+- [💽 Preparar disco de logs en Ubuntu Server](#preparar-disco-de-logs-en-ubuntu-server)
 - [⚡ Despliegue rápido](#despliegue-rapido)
 - [📂 Dónde están los logs](#donde-estan-los-logs)
 - [🧾 Despliegue básico de syslog](#despliegue-basico-de-syslog)
@@ -52,6 +55,8 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 - Backups automáticos
 - Informes finales
 - Validación automática en GitHub Actions
+- Recomendación para administrar la VM por SSH
+- Guía para preparar un segundo disco para logs en Ubuntu Server
 
 ---
 
@@ -91,6 +96,8 @@ instalacion-syslog-sin-dolores-de-cabeza/
 - acceso con sudo
 - conectividad con los clientes
 - systemd funcionando
+- segundo disco recomendado para guardar logs remotos
+- acceso inicial por consola o posibilidad de habilitar SSH
 
 ### Cliente
 
@@ -125,13 +132,343 @@ instalacion-syslog-sin-dolores-de-cabeza/
 <details open>
 <summary><strong>🚀 Instalación recomendada</strong></summary>
 
-Clona el repositorio y ejecuta los scripts directamente.
+Orden recomendado para dejar la VM bien preparada:
+
+1. instala Ubuntu Server en el disco del sistema
+2. habilita SSH para administrar la VM cómodamente
+3. prepara y monta el disco de logs en `/var/log/remote`
+4. clona el repositorio
+5. ejecuta los scripts
 
 ```bash
 git clone https://github.com/victordanielteleco/instalacion-syslog-sin-dolores-de-cabeza.git
 cd instalacion-syslog-sin-dolores-de-cabeza
 chmod +x scripts/*.sh
 ```
+
+> Recomendación práctica: en el servidor, no ejecutes el script hasta haber dejado listo el disco de logs si quieres que los logs remotos vayan al disco secundario desde el primer momento.
+
+</details>
+
+---
+
+<a id="aviso-sobre-almacenamiento-de-logs"></a>
+<details open>
+<summary><strong>🔔 Aviso sobre almacenamiento de logs</strong></summary>
+
+> **Importante**
+>
+> El script está preparado para usar un disco aparte, pero solo indirectamente:
+>
+> - no monta el disco
+> - no lo detecta
+> - no comprueba que sea un mountpoint independiente
+>
+> Simplemente escribe en:
+>
+> ```text
+> /var/log/remote
+> ```
+
+### Qué significa esto en la práctica
+
+- si montas un segundo disco en `/var/log/remote`, los logs remotos se guardarán en ese disco
+- si no montas nada ahí, los logs se guardarán en el disco del sistema
+- si ejecutas el script antes de montar el disco, puede empezar a escribir en el disco del sistema
+
+### Recomendación
+
+Para una VM bien montada:
+
+- instala Ubuntu Server en el disco del sistema
+- habilita SSH
+- prepara el segundo disco
+- móntalo en `/var/log/remote`
+- y **después** ejecuta `setup_syslog_server_v5.sh`
+
+</details>
+
+---
+
+<a id="habilitar-ssh-en-la-vm"></a>
+<details open>
+<summary><strong>🔑 Habilitar SSH en la VM</strong></summary>
+
+Se recomienda habilitar SSH justo después de terminar la instalación base de Ubuntu Server. Así puedes seguir la configuración cómodamente desde tu equipo y no depender de la consola de Proxmox para cada ajuste.
+
+### 1. Instalar OpenSSH Server
+
+```bash
+sudo apt update
+sudo apt install openssh-server -y
+```
+
+#### Qué hace cada comando
+
+- `sudo` → ejecuta el comando como administrador
+- `apt` → gestor de paquetes de Ubuntu
+- `update` → actualiza la lista de paquetes disponibles
+- `install` → instala el paquete indicado
+- `openssh-server` → servicio SSH del sistema
+- `-y` → acepta automáticamente la confirmación
+
+### 2. Habilitar y arrancar SSH
+
+```bash
+sudo systemctl enable --now ssh
+sudo systemctl status ssh
+```
+
+#### Qué hace cada comando y opción
+
+- `systemctl` → gestiona servicios con systemd
+- `enable` → hace que el servicio arranque automáticamente al iniciar la VM
+- `--now` → además de habilitarlo, lo arranca en este momento
+- `status` → muestra el estado actual del servicio
+
+### 3. Ver la IP de la VM
+
+```bash
+hostname -I
+```
+
+#### Qué hace
+
+- `hostname` → muestra información del sistema
+- `-I` → enseña las IPs asignadas al equipo
+
+### 4. Conectarte desde tu equipo
+
+```bash
+ssh usuario@IP_DE_LA_VM
+```
+
+#### Qué hace
+
+- `ssh` → abre una conexión remota segura
+- `usuario` → usuario de Ubuntu Server
+- `IP_DE_LA_VM` → dirección IP de la máquina virtual
+
+### 5. Si usas UFW manualmente antes del script
+
+```bash
+sudo ufw allow OpenSSH
+```
+
+#### Qué hace
+
+- `ufw` → firewall sencillo de Ubuntu
+- `allow` → permite tráfico entrante
+- `OpenSSH` → perfil predefinido para SSH
+
+> Recomendación: haz el resto del montaje y despliegue del servidor por SSH. Es más cómodo para copiar comandos, editar `/etc/fstab` y verificar el sistema.
+
+</details>
+
+---
+
+<a id="preparar-disco-de-logs-en-ubuntu-server"></a>
+<details open>
+<summary><strong>💽 Preparar disco de logs en Ubuntu Server</strong></summary>
+
+Esta sección deja listo el segundo disco de la VM para guardar los logs remotos en:
+
+```text
+/var/log/remote
+```
+
+> En los ejemplos usaré `/dev/sdb`.  
+> Si tu segundo disco aparece como `/dev/vdb` o similar, cambia el nombre en los comandos.
+
+### 1. Identificar el disco de logs
+
+```bash
+lsblk
+```
+
+#### Qué hace
+
+- `lsblk` → muestra discos y particiones en formato árbol
+
+Busca algo como esto:
+
+- `/dev/sda` o `/dev/vda` → disco del sistema
+- `/dev/sdb` o `/dev/vdb` → disco de logs
+
+### 2. Crear una partición en el segundo disco
+
+```bash
+sudo fdisk /dev/sdb
+```
+
+#### Qué hace
+
+- `fdisk` → herramienta para crear y modificar particiones
+- `/dev/sdb` → disco sobre el que vas a trabajar
+
+#### Dentro de `fdisk`
+
+Pulsa estas teclas en este orden:
+
+- `n` → nueva partición
+- `p` → primaria
+- `1` → partición número 1
+- Enter → primer sector por defecto
+- Enter → último sector por defecto
+- `w` → guardar y salir
+
+Después comprueba el resultado:
+
+```bash
+lsblk
+```
+
+Ahora deberías ver algo como:
+
+```text
+/dev/sdb1
+```
+
+### 3. Formatear la partición en ext4
+
+```bash
+sudo mkfs.ext4 /dev/sdb1
+```
+
+#### Qué hace
+
+- `mkfs.ext4` → crea un sistema de archivos ext4
+- `/dev/sdb1` → partición del disco de logs
+
+> Este paso borra el contenido previo de esa partición.
+
+### 4. Crear el punto de montaje
+
+```bash
+sudo mkdir -p /var/log/remote
+```
+
+#### Qué hace
+
+- `mkdir` → crea directorios
+- `-p` → crea directorios padre si faltan y no falla si ya existen
+
+### 5. Obtener el UUID de la partición
+
+```bash
+sudo blkid /dev/sdb1
+```
+
+#### Qué hace
+
+- `blkid` → muestra identificadores de discos y particiones
+- `/dev/sdb1` → partición que quieres identificar
+
+Verás algo parecido a:
+
+```text
+/dev/sdb1: UUID="1234-5678-ABCD" TYPE="ext4"
+```
+
+Guarda ese UUID.
+
+### 6. Configurar el montaje automático en `/etc/fstab`
+
+```bash
+sudo nano /etc/fstab
+```
+
+Añade al final una línea como esta:
+
+```fstab
+UUID=1234-5678-ABCD /var/log/remote ext4 defaults,nofail 0 2
+```
+
+Cambiando `1234-5678-ABCD` por tu UUID real.
+
+#### Qué significa cada campo
+
+- `UUID=...` → identifica la partición concreta
+- `/var/log/remote` → punto de montaje
+- `ext4` → tipo de sistema de archivos
+- `defaults,nofail`
+  - `defaults` → opciones de montaje estándar
+  - `nofail` → el sistema puede seguir arrancando aunque falle ese disco
+- `0` → no usar `dump`
+- `2` → orden de chequeo del sistema de archivos al arrancar
+
+### 7. Montar el disco sin reiniciar
+
+```bash
+sudo mount -a
+```
+
+#### Qué hace
+
+- `mount` → monta sistemas de archivos
+- `-a` → monta todo lo definido en `/etc/fstab`
+
+### 8. Verificar que ha quedado bien montado
+
+```bash
+df -h
+mountpoint /var/log/remote
+```
+
+#### Qué hace cada comando
+
+- `df` → muestra uso de espacio en disco
+- `-h` → formato legible para personas
+- `mountpoint` → comprueba si una ruta es un punto de montaje real
+
+Si todo está bien, `/var/log/remote` debería aparecer usando el tamaño del segundo disco.
+
+### 9. Solo después ejecuta el script del servidor
+
+Modo `basic`:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --run-test
+```
+
+Modo `tls`:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh tls \
+  --allowed-ips 172.16.3.10 \
+  --server-ip 172.16.3.2 \
+  --tls-clients kali01 \
+  --run-test
+```
+
+### 10. Cómo ampliar el disco más adelante
+
+#### En Proxmox
+
+Amplía el disco desde **Hardware → Disk → Resize**
+
+o por consola del host:
+
+```bash
+qm resize 101 scsi1 +20G
+```
+
+#### Dentro de Ubuntu Server
+
+```bash
+lsblk
+sudo growpart /dev/sdb 1
+sudo resize2fs /dev/sdb1
+```
+
+#### Qué hace cada comando
+
+- `growpart` → amplía la partición para ocupar el nuevo espacio disponible
+- `/dev/sdb` → disco
+- `1` → partición número 1
+- `resize2fs` → amplía el sistema de archivos ext4 para usar el espacio nuevo
 
 </details>
 
@@ -142,6 +479,11 @@ chmod +x scripts/*.sh
 <summary><strong>⚡ Despliegue rápido</strong></summary>
 
 ### 🖥️ Servidor (modo basic)
+
+> Antes de lanzar este paso en el servidor:
+>
+> - habilita SSH
+> - deja montado el disco de logs en `/var/log/remote`
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
@@ -193,6 +535,11 @@ Ejemplo:
 
 Esto facilita mucho localizar qué equipo generó cada evento y qué servicio lo produjo.
 
+### Importante
+
+- si `/var/log/remote` está montado sobre un segundo disco, los logs irán a ese disco
+- si `/var/log/remote` es solo una carpeta normal, los logs irán al disco del sistema
+
 </details>
 
 ---
@@ -209,7 +556,14 @@ Este modo permite enviar logs sin cifrado. Es ideal para laboratorio, pruebas r�
 Cliente → Servidor syslog (TCP 10514)
 ```
 
-### 🖥️ Paso 1: servidor
+### 🖥️ Paso 1: preparar la VM del servidor
+
+Antes de ejecutar el script:
+
+- habilita SSH
+- monta el disco de logs en `/var/log/remote`
+
+### 🖥️ Paso 2: servidor
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
@@ -228,7 +582,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 - restringe acceso con UFW
 - genera un informe final
 
-### 💻 Paso 2: cliente
+### 💻 Paso 3: cliente
 
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh basic \
@@ -244,7 +598,7 @@ sudo bash scripts/setup_syslog_client_v5.sh basic \
 - hace backup de configuraciones previas
 - genera un informe final
 
-### 🧪 Paso 3: verificación
+### 🧪 Paso 4: verificación
 
 En el cliente:
 
@@ -283,6 +637,13 @@ Este modo añade cifrado y autenticación mutua. Es la opción recomendada para 
 ```text
 Cliente ⇄ Servidor syslog (TLS 6514)
 ```
+
+### 🖥️ Preparación previa del servidor
+
+Antes de ejecutar el script:
+
+- habilita SSH
+- monta el disco de logs en `/var/log/remote`
 
 ### 🖥️ Servidor
 
@@ -374,6 +735,7 @@ Esta es una demo rápida que suele funcionar muy bien.
 
 ### Demo básica
 
+Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco
 Arranca el servidor en basic  
 Arranca el cliente en basic
 
@@ -390,6 +752,8 @@ tail -f /var/log/remote/*/*.log
 ```
 
 ### Demo más potente orientada a seguridad
+
+Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco
 
 En el cliente, lanza un intento fallido de SSH:
 
@@ -426,6 +790,7 @@ Esto demuestra muy bien la centralización de logs y la detección de actividad 
 | `/root/syslog_server_report.txt` | Informe final del servidor |
 | `/root/syslog_client_report.txt` | Informe final del cliente |
 | `/root/syslog-client-bundles/` | Bundles TLS exportados por cliente |
+| `/var/log/remote/` | Ruta donde el servidor guarda los logs remotos |
 
 </details>
 
@@ -443,6 +808,8 @@ Comprueba en el servidor:
 ss -tulpn | grep 10514
 sudo systemctl status rsyslog
 sudo ufw status
+mountpoint /var/log/remote
+df -h
 ```
 
 Comprueba en el cliente:
@@ -456,6 +823,19 @@ Revisa también:
 - IP correcta del servidor
 - IP del cliente incluida en `--allowed-ips`
 - conectividad entre máquinas
+- que `/var/log/remote` esté montado si quieres usar el segundo disco
+
+### ❌ Los logs se están yendo al disco del sistema
+
+Comprueba:
+
+```bash
+mountpoint /var/log/remote
+df -h
+lsblk
+```
+
+Si `/var/log/remote` no está montado sobre el segundo disco, el script seguirá escribiendo en el disco del sistema.
 
 ### ❌ TLS no funciona
 
@@ -565,6 +945,14 @@ En el servidor, dentro de:
 /root/syslog-client-bundles/<cliente>/
 ```
 
+### ¿Es obligatorio usar un segundo disco?
+
+No es obligatorio, pero sí recomendable. Si no montas un segundo disco en `/var/log/remote`, los logs remotos se guardarán en el disco del sistema.
+
+### ¿Se puede administrar la VM sin SSH?
+
+Sí, pero no es lo más cómodo. Se recomienda habilitar SSH para hacer el montaje del disco, editar `/etc/fstab` y ejecutar los scripts con más facilidad.
+
 </details>
 
 ---
@@ -578,6 +966,8 @@ En el servidor, dentro de:
 - usa TLS en producción
 - protege el acceso al servidor syslog
 - no reutilices claves privadas entre máquinas
+- no expongas SSH a redes no confiables sin controles adicionales
+- usa contraseñas robustas o, mejor aún, claves SSH
 
 </details>
 
@@ -605,8 +995,11 @@ Esto ayuda a detectar errores antes de usar los scripts en laboratorio o preprod
 
 Usa este orden:
 
-- basic para validar conectividad y flujo
-- tls para endurecer el despliegue
-- añadir más clientes
+- instala Ubuntu Server en el disco del sistema
+- habilita SSH
+- monta el segundo disco en `/var/log/remote`
+- usa `basic` para validar conectividad y flujo
+- pasa a `tls` para endurecer el despliegue
+- añade más clientes
 
 </details>
