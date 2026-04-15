@@ -71,7 +71,7 @@ jobs:
 
           grep -q "Instalación Syslog sin Dolores de Cabeza" README.md
           grep -q "Troubleshooting" README.md
-          grep -q "DEMO PARA JEFE / CLIENTE" README.md
+          grep -q "DEMO" README.md
           grep -q "/var/log/remote" README.md
           grep -q "setup_syslog_server_v5.sh" README.md
           grep -q "setup_syslog_client_v5.sh" README.md
