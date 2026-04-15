@@ -612,12 +612,13 @@ write_basic_config() {
 # Carga el módulo de entrada TCP.
 module(load="imtcp")
 
+# Plantilla dinámica basada en IP y programa.
+template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
+
 # Define un ruleset separado para logs remotos.
 ruleset(name="remote_store") {
-    # Define una plantilla dinámica basada en IP y programa.
-    template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
     # Escribe el log en fichero dinámico usando la plantilla.
-    action(type="omfile" DynaFile="RemoteLogs" DirCreateMode="0750" FileCreateMode="0640")
+    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
     # Detiene el procesamiento de este mensaje dentro de este ruleset.
     stop
 }
@@ -629,7 +630,6 @@ input(
     ruleset="remote_store"
 )
 EOF
-  # Escribe la configuración.
 
   ok "Configuración basic escrita."
 }
@@ -662,12 +662,13 @@ global(
   DefaultNetstreamDriverKeyFile="${CERT_DIR}/server.key"
 )
 
+# Plantilla dinámica por IP y programa.
+template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
+
 # Ruleset separado para logs remotos recibidos por TLS.
 ruleset(name="remote_store_tls") {
-    # Plantilla dinámica por IP y programa.
-    template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
     # Escritura en fichero con creación automática de directorios.
-    action(type="omfile" DynaFile="RemoteLogs" DirCreateMode="0750" FileCreateMode="0640")
+    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
     # Para el procesamiento dentro del ruleset.
     stop
 }
@@ -683,7 +684,6 @@ input(
     ruleset="remote_store_tls"
 )
 EOF
-  # Escribe la configuración TLS.
 
   ok "Configuración TLS escrita."
 }

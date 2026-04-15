@@ -2,6 +2,20 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.3] - 2026-04-15
+
+### Fixed
+- Corregida la generación de configuración `rsyslog` en `setup_syslog_server_v5.sh` para definir `template(name="RemoteLogs" ...)` fuera de los `ruleset`, evitando errores de validación en modo `basic` y `tls`
+- Añadida creación automática de directorios remotos en `rsyslog` con `createDirs="on"` para que las rutas por IP se generen correctamente al recibir logs
+- Ajustado el workflow `test-installation.yml` para instalar `util-linux` en el contenedor de pruebas, garantizando la disponibilidad de `mountpoint`
+
+### Added
+- Comprobación informativa en `setup_syslog_server_v5.sh` para avisar cuando `/var/log/remote` no está montado como punto de montaje independiente y los logs van al disco del sistema
+
+### Notes
+- No cambia el uso funcional de los modos `basic` y `tls`
+- La mejora del script sigue siendo no destructiva: avisa del montaje, pero no bloquea la instalación
+
 ## [1.0.2] - 2026-04-15
 
 ### Added
