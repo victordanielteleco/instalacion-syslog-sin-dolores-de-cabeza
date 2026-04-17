@@ -75,8 +75,27 @@ jobs:
           grep -q "/var/log/remote" README.md
           grep -q "setup_syslog_server_v5.sh" README.md
           grep -q "setup_syslog_client_v5.sh" README.md
+          grep -q -- "--protocol both" README.md
+          grep -q -- "--protocol tcp" README.md
+          grep -q "10514" README.md
+          grep -q "6514" README.md
 
           echo "OK: README contiene secciones clave"
+
+      - name: Comprobar referencias importantes en documentación
+        run: |
+          echo "Comprobando documentación adicional..."
+
+          grep -q "Despliegue básico de syslog" docs/despliegue-basico.md
+          grep -q -- "--protocol both" docs/despliegue-basico.md
+          grep -q -- "--protocol tcp" docs/despliegue-basico.md
+          grep -q "10514" docs/despliegue-basico.md
+
+          grep -q "Despliegue syslog con TLS" docs/despliegue-tls.md
+          grep -q "6514" docs/despliegue-tls.md
+          grep -q -- "--peer syslog.local" docs/despliegue-tls.md
+
+          echo "OK: documentación coherente"
 
       - name: Comprobar que no hay claves privadas ni bundles sensibles en el repo
         run: |
@@ -96,4 +115,5 @@ jobs:
           echo "- Sintaxis Bash: OK"
           echo "- ShellCheck: OK"
           echo "- README: OK"
+          echo "- Docs: OK"
           echo "- Ficheros sensibles: OK"

@@ -7,14 +7,31 @@ Modo seguro con cifrado y autenticación mutua (mTLS).
 ## 🧱 Arquitectura
 
 ```text
-Cliente ⇄ Servidor syslog (TLS 6514)
+Cliente ⇄ Servidor syslog (TLS sobre TCP, puerto 6514 por defecto)
 ```
 
+---
+
 ## 🖥️ 1. Servidor
+
+### Puerto por defecto
+
+Si no indicas `--port`, el modo `tls` usa `6514`.
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
   --allowed-ips 172.16.3.10 \
+  --server-ip 172.16.3.2 \
+  --tls-clients kali01 \
+  --run-test
+```
+
+### Puerto TLS personalizado
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh tls \
+  --allowed-ips 172.16.3.10 \
+  --port 6515 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
   --run-test
@@ -30,6 +47,8 @@ sudo bash scripts/setup_syslog_server_v5.sh tls \
 - restringe acceso con UFW
 - genera informe final
 
+---
+
 ## 📦 2. Bundles TLS generados
 
 En el servidor, para cada cliente:
@@ -40,9 +59,9 @@ En el servidor, para cada cliente:
 
 Contiene:
 
-- ca.crt
-- client.crt
-- client.key
+- `ca.crt`
+- `client.crt`
+- `client.key`
 
 Ejemplo:
 
@@ -50,13 +69,30 @@ Ejemplo:
 /root/syslog-client-bundles/kali01/
 ```
 
+---
+
 ## 💻 3. Cliente
 
-Copiar al cliente los archivos del bundle correspondiente y ejecutar:
+### Puerto por defecto
+
+Si no indicas `--port`, el modo `tls` usa `6514`.
 
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh tls \
   --server 172.16.3.2 \
+  --ca ca.crt \
+  --cert client.crt \
+  --key client.key \
+  --peer syslog.local \
+  --run-test
+```
+
+### Puerto TLS personalizado
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh tls \
+  --server 172.16.3.2 \
+  --port 6515 \
   --ca ca.crt \
   --cert client.crt \
   --key client.key \
@@ -71,6 +107,8 @@ sudo bash scripts/setup_syslog_client_v5.sh tls \
 - valida la configuración
 - mantiene rsyslog local activo
 - genera informe final
+
+---
 
 ## 🧪 4. Verificación
 
@@ -89,8 +127,16 @@ tail -f /var/log/remote/*/*.log
 También puedes comprobar el puerto TLS en el servidor:
 
 ```bash
-ss -tulpn | grep 6514
+sudo ss -tulpn | grep 6514
 ```
+
+o, si usaste un puerto distinto:
+
+```bash
+sudo ss -tulpn | grep 6515
+```
+
+---
 
 ## 🛠️ 5. Problemas comunes
 
@@ -98,11 +144,12 @@ ss -tulpn | grep 6514
 
 Revisar:
 
-- --peer correcto
+- `--peer` correcto
 - CA correcta
-- client.crt y client.key correctos
-- cliente incluido en --tls-clients
+- `client.crt` y `client.key` correctos
+- cliente incluido en `--tls-clients`
 - SAN del servidor correcto
+- mismo puerto TLS en cliente y servidor
 
 ### ❌ Quiero revisar un certificado
 
@@ -134,6 +181,8 @@ En el cliente:
 sudo bash scripts/setup_syslog_client_v5.sh disable
 ```
 
+---
+
 ## 🔄 6. Regenerar certificados
 
 Usa la opción:
@@ -149,30 +198,37 @@ Sirve cuando:
 - quieres reiniciar la PKI
 - hiciste pruebas y quieres limpiar material anterior
 
+---
+
 ## 🔐 7. Buenas prácticas
 
 - 1 cliente = 1 certificado
 - usar nombres coherentes para clientes
 - proteger claves privadas
-- restringir IPs con --allowed-ips aunque uses TLS
+- restringir IPs con `--allowed-ips` aunque uses TLS
 - rotar certificados periódicamente en entornos serios
+- usar el mismo puerto TLS en cliente y servidor
+
+---
 
 ## 📄 Archivos relevantes
 
 ### Servidor
 
-- /etc/rsyslog.d/10-tls.conf
-- /etc/rsyslog-certs/
-- /root/syslog-client-bundles/
-- /root/syslog_setup_backups/
-- /root/syslog_server_report.txt
+- `/etc/rsyslog.d/10-tls.conf`
+- `/etc/rsyslog-certs/`
+- `/root/syslog-client-bundles/`
+- `/root/syslog_setup_backups/`
+- `/root/syslog_server_report.txt`
 
 ### Cliente
 
-- /etc/rsyslog.d/20-tls.conf
-- /etc/rsyslog-certs/
-- /root/syslog_setup_backups/
-- /root/syslog_client_report.txt
+- `/etc/rsyslog.d/20-tls.conf`
+- `/etc/rsyslog-certs/`
+- `/root/syslog_setup_backups/`
+- `/root/syslog_client_report.txt`
+
+---
 
 ## 📌 8. Cuándo usar este modo
 
@@ -180,11 +236,13 @@ Sirve cuando:
 - ✔ Redes sensibles
 - ✔ Auditoría
 - ✔ Cumplimiento
-- ✔ Demos serias
+- ✔ DEMOs serias
+
+---
 
 ## 🧾 Resumen
 
-El modo tls añade:
+El modo `tls` añade:
 
 - cifrado
 - autenticación mutua

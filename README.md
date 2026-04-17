@@ -31,7 +31,7 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 - [📂 Dónde están los logs](#donde-estan-los-logs)
 - [🧾 Despliegue básico de syslog](#despliegue-basico-de-syslog)
 - [🔐 Modo TLS (seguro)](#modo-tls-seguro)
-- [🧪 Demo](#demo)
+- [🧪 DEMO](#demo)
 - [📄 Archivos importantes](#archivos-importantes)
 - [🛠️ Troubleshooting](#troubleshooting)
 - [❓ FAQ](#faq)
@@ -45,7 +45,13 @@ Este repositorio está pensado para que cualquier persona del equipo pueda:
 ## ✨ Qué incluye
 
 - Configuración automática de `rsyslog`
-- Modo `basic` por TCP
+- Modo `basic` en servidor con:
+  - `udp`
+  - `tcp`
+  - `both`
+- Modo `basic` en cliente con:
+  - `udp`
+  - `tcp`
 - Modo `tls` con TLS/mTLS
 - Separación de logs locales y remotos
 - Firewall con `UFW`
@@ -115,14 +121,52 @@ instalacion-syslog-sin-dolores-de-cabeza/
 
 ### Servidor
 
-- `basic` → TCP + firewall por IP
-- `tls` → TCP + TLS + autenticación mutua + SAN
+#### `basic`
+Recepción syslog sin TLS.
+
+Permite elegir:
+
+- `udp`
+- `tcp`
+- `both`
+
+Y además:
+
+- puerto por defecto si no indicas nada: `10514`
+- si no indicas `--protocol` ni `--port`, se usa `udp` en `10514`
+- si indicas `--protocol` pero no puerto, se usa `10514`
+- si usas `both`, puedes:
+  - usar el mismo puerto para ambos con `--port`
+  - o usar puertos distintos con `--tcp-port` y `--udp-port`
+
+#### `tls`
+Recepción por TCP + TLS/mTLS + certificados.
+
+- puerto por defecto: `6514`
 
 ### Cliente
 
-- `basic` → envío por TCP
-- `tls` → envío por TCP + TLS
-- `disable` → deja de enviar logs sin apagar el syslog local
+#### `basic`
+Reenvío sin TLS.
+
+Permite elegir:
+
+- `udp`
+- `tcp`
+
+Y además:
+
+- puerto por defecto si no indicas nada: `10514`
+- si no indicas `--protocol` ni `--port`, se usa `udp` en `10514`
+- si indicas `--protocol` pero no puerto, se usa `10514`
+
+#### `tls`
+Reenvío por TCP + TLS.
+
+- puerto por defecto: `6514`
+
+#### `disable`
+Elimina el reenvío remoto sin apagar el syslog local.
 
 </details>
 
@@ -478,12 +522,12 @@ sudo resize2fs /dev/sdb1
 <details open>
 <summary><strong>⚡ Despliegue rápido</strong></summary>
 
-### 🖥️ Servidor (modo basic)
+### 🖥️ Servidor (modo basic, default)
 
-> Antes de lanzar este paso en el servidor:
->
-> - habilita SSH
-> - deja montado el disco de logs en `/var/log/remote`
+Si no indicas nada más:
+
+- protocolo por defecto: `udp`
+- puerto por defecto: `10514`
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
@@ -491,7 +535,12 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
   --run-test
 ```
 
-### 💻 Cliente (modo basic)
+### 💻 Cliente (modo basic, default)
+
+Si no indicas nada más:
+
+- protocolo por defecto: `udp`
+- puerto por defecto: `10514`
 
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh basic \
@@ -545,16 +594,33 @@ Esto facilita mucho localizar qué equipo generó cada evento y qué servicio lo
 ---
 
 <a id="despliegue-basico-de-syslog"></a>
-<details>
+<details open>
 <summary><strong>🧾 Despliegue básico de syslog</strong></summary>
 
 Este modo permite enviar logs sin cifrado. Es ideal para laboratorio, pruebas rápidas o demos internas donde todavía no necesites TLS.
 
 ### 🧱 Arquitectura
 
+#### Opción 1: UDP por defecto
+
+```text
+Cliente → Servidor syslog (UDP 10514)
+```
+
+#### Opción 2: TCP
+
 ```text
 Cliente → Servidor syslog (TCP 10514)
 ```
+
+#### Opción 3: Servidor escuchando en ambos
+
+```text
+Cliente → Servidor syslog (UDP y TCP)
+```
+
+> El cliente elige un único protocolo por ejecución (`udp` o `tcp`).  
+> El servidor puede escuchar en `udp`, en `tcp` o en `both`.
 
 ### 🖥️ Paso 1: preparar la VM del servidor
 
@@ -565,24 +631,81 @@ Antes de ejecutar el script:
 
 ### 🖥️ Paso 2: servidor
 
+#### Caso A: default absoluto
+
+Si no indicas `--protocol` ni `--port`:
+
+- se usa `udp`
+- se usa `10514`
+
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
   --allowed-ips 172.16.3.10 \
   --run-test
 ```
 
+#### Caso B: TCP con puerto por defecto
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --protocol tcp \
+  --run-test
+```
+
+#### Caso C: UDP con puerto personalizado
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --protocol udp \
+  --port 5514 \
+  --run-test
+```
+
+#### Caso D: ambos protocolos con el mismo puerto
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --protocol both \
+  --port 10514 \
+  --run-test
+```
+
+#### Caso E: ambos protocolos con puertos distintos
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --protocol both \
+  --tcp-port 10514 \
+  --udp-port 5514 \
+  --run-test
+```
+
 #### Qué hace el script del servidor
 
 - instala rsyslog
-- prepara el directorio /var/log/remote
-- configura recepción TCP en el puerto 10514 por defecto
+- prepara el directorio `/var/log/remote`
+- comprueba si `/var/log/remote` es un mountpoint independiente y avisa si no lo es
+- configura recepción `udp`, `tcp` o `both` según lo indicado
+- usa puerto por defecto `10514` en modo basic cuando no se especifica otro
 - separa logs remotos usando un ruleset
+- crea directorios remotos automáticamente por IP
 - configura logrotate
 - crea backups de configuraciones previas
-- restringe acceso con UFW
+- restringe acceso con UFW según las IPs permitidas y el protocolo usado
 - genera un informe final
 
 ### 💻 Paso 3: cliente
+
+#### Caso A: default absoluto
+
+Si no indicas `--protocol` ni `--port`:
+
+- se usa `udp`
+- se usa `10514`
 
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh basic \
@@ -590,10 +713,30 @@ sudo bash scripts/setup_syslog_client_v5.sh basic \
   --run-test
 ```
 
+#### Caso B: TCP con puerto por defecto
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh basic \
+  --server 172.16.3.2 \
+  --protocol tcp \
+  --run-test
+```
+
+#### Caso C: UDP con puerto personalizado
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh basic \
+  --server 172.16.3.2 \
+  --protocol udp \
+  --port 5514 \
+  --run-test
+```
+
 #### Qué hace el script del cliente
 
 - instala rsyslog si hace falta
-- configura forwarding por TCP al servidor
+- configura forwarding por `udp` o `tcp` al servidor
+- usa puerto por defecto `10514` en modo basic cuando no se especifica otro
 - mantiene logs locales
 - hace backup de configuraciones previas
 - genera un informe final
@@ -611,6 +754,13 @@ En el servidor:
 ```bash
 tail -f /var/log/remote/*/*.log
 ```
+
+### 📌 Reglas importantes en modo basic
+
+- si el servidor está en `udp`, el cliente debe enviar por `udp`
+- si el servidor está en `tcp`, el cliente debe enviar por `tcp`
+- si el servidor está en `both`, el cliente puede usar cualquiera de los dos
+- si cambias el puerto en un lado, debes usar el mismo en el otro
 
 ### 📌 Cuándo usar este modo
 
@@ -635,7 +785,7 @@ Este modo añade cifrado y autenticación mutua. Es la opción recomendada para 
 ### 🧱 Arquitectura
 
 ```text
-Cliente ⇄ Servidor syslog (TLS 6514)
+Cliente ⇄ Servidor syslog (TLS sobre TCP, puerto 6514 por defecto)
 ```
 
 ### 🖥️ Preparación previa del servidor
@@ -647,9 +797,22 @@ Antes de ejecutar el script:
 
 ### 🖥️ Servidor
 
+Puerto por defecto en `tls`: `6514`
+
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
   --allowed-ips 172.16.3.10 \
+  --server-ip 172.16.3.2 \
+  --tls-clients kali01 \
+  --run-test
+```
+
+Si quieres cambiar el puerto TLS:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh tls \
+  --allowed-ips 172.16.3.10 \
+  --port 6515 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
   --run-test
@@ -681,11 +844,24 @@ Contiene:
 
 ### 💻 Cliente
 
-Copia al cliente los tres archivos del bundle correspondiente y luego ejecuta:
+Puerto por defecto en `tls`: `6514`
 
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh tls \
   --server 172.16.3.2 \
+  --ca ca.crt \
+  --cert client.crt \
+  --key client.key \
+  --peer syslog.local \
+  --run-test
+```
+
+Si quieres cambiar el puerto TLS:
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh tls \
+  --server 172.16.3.2 \
+  --port 6515 \
   --ca ca.crt \
   --cert client.crt \
   --key client.key \
@@ -731,13 +907,27 @@ tail -f /var/log/remote/*/*.log
 <details>
 <summary><strong>🧪 DEMO</strong></summary>
 
-Esta es una demo rápida que suele funcionar muy bien.
+Esta es una DEMO rápida que suele funcionar muy bien.
 
-### Demo básica
+### Demo básica por defecto
 
-Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco
-Arranca el servidor en basic  
-Arranca el cliente en basic
+Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco.
+
+Arranca el servidor en basic por defecto:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --run-test
+```
+
+Arranca el cliente en basic por defecto:
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh basic \
+  --server 172.16.3.2 \
+  --run-test
+```
 
 En el cliente:
 
@@ -751,9 +941,29 @@ En el servidor:
 tail -f /var/log/remote/*/*.log
 ```
 
+### Demo básica por TCP
+
+Servidor:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.10 \
+  --protocol tcp \
+  --run-test
+```
+
+Cliente:
+
+```bash
+sudo bash scripts/setup_syslog_client_v5.sh basic \
+  --server 172.16.3.2 \
+  --protocol tcp \
+  --run-test
+```
+
 ### Demo más potente orientada a seguridad
 
-Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco
+Asegúrate de que `/var/log/remote` ya está montado si quieres usar el segundo disco.
 
 En el cliente, lanza un intento fallido de SSH:
 
@@ -805,17 +1015,24 @@ Esto demuestra muy bien la centralización de logs y la detección de actividad 
 Comprueba en el servidor:
 
 ```bash
-ss -tulpn | grep 10514
 sudo systemctl status rsyslog
 sudo ufw status
 mountpoint /var/log/remote
 df -h
+sudo cat /root/syslog_server_report.txt
+```
+
+Comprueba puertos en escucha:
+
+```bash
+sudo ss -tulpn | grep -E '10514|5514|6514'
 ```
 
 Comprueba en el cliente:
 
 ```bash
 sudo systemctl status rsyslog
+sudo cat /root/syslog_client_report.txt
 ```
 
 Revisa también:
@@ -824,6 +1041,34 @@ Revisa también:
 - IP del cliente incluida en `--allowed-ips`
 - conectividad entre máquinas
 - que `/var/log/remote` esté montado si quieres usar el segundo disco
+- que cliente y servidor usen el **mismo protocolo**
+- que cliente y servidor usen el **mismo puerto**
+
+### ❌ El servidor escucha en UDP y el cliente está enviando por TCP
+
+Ejemplo de error típico:
+
+- servidor: `basic` por defecto → `udp 10514`
+- cliente: `basic --protocol tcp`
+
+Así no funcionará.
+
+Solución: hacer coincidir ambos lados.
+
+### ❌ El servidor escucha en ambos, pero no en el puerto esperado
+
+Si usas:
+
+```bash
+--protocol both --tcp-port 10514 --udp-port 5514
+```
+
+entonces:
+
+- TCP escucha en `10514`
+- UDP escucha en `5514`
+
+No asumas que ambos usan el mismo puerto si has separado `--tcp-port` y `--udp-port`.
 
 ### ❌ Los logs se están yendo al disco del sistema
 
@@ -846,6 +1091,7 @@ Revisa:
 - que `client.crt` y `client.key` corresponden entre sí
 - que el servidor incluye el cliente en `--tls-clients`
 - que el SAN del servidor incluye el nombre o IP usados
+- que cliente y servidor usan el mismo puerto TLS
 
 Para inspeccionar un certificado:
 
@@ -905,9 +1151,47 @@ Revisa los backups en:
 <details>
 <summary><strong>❓ FAQ</strong></summary>
 
+### ¿Cuál es el protocolo por defecto en modo basic?
+
+- servidor: `udp`
+- cliente: `udp`
+
+### ¿Cuál es el puerto por defecto en modo basic?
+
+- servidor: `10514`
+- cliente: `10514`
+
+### ¿Qué pasa si indico protocolo pero no puerto?
+
+En modo `basic`, se usa `10514`.
+
+### ¿Qué pasa si no indico ni protocolo ni puerto?
+
+En modo `basic`, se usa `udp` en `10514`.
+
+### ¿Puede el servidor escuchar en TCP y UDP a la vez?
+
+Sí. Usa:
+
+```bash
+--protocol both
+```
+
+Y además puedes:
+
+- usar el mismo puerto para ambos con `--port`
+- usar puertos distintos con `--tcp-port` y `--udp-port`
+
+### ¿Puede el cliente enviar a la vez por TCP y UDP?
+
+No. El cliente elige uno por ejecución:
+
+- `--protocol udp`
+- `--protocol tcp`
+
 ### ¿Se pierden logs locales del cliente?
 
-No. El cliente sigue manteniendo sus logs locales. El modo disable solo quita el envío remoto.
+No. El cliente sigue manteniendo sus logs locales. El modo `disable` solo quita el envío remoto.
 
 ### ¿Puedo usar varias IPs permitidas?
 
@@ -998,7 +1282,9 @@ Usa este orden:
 - instala Ubuntu Server en el disco del sistema
 - habilita SSH
 - monta el segundo disco en `/var/log/remote`
-- usa `basic` para validar conectividad y flujo
+- valida primero `basic` por defecto (`udp 10514`)
+- si quieres validar `tcp`, cámbialo explícitamente en cliente y servidor
+- usa `both` en el servidor solo cuando de verdad necesites aceptar ambos transportes
 - pasa a `tls` para endurecer el despliegue
 - añade más clientes
 

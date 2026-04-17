@@ -37,8 +37,23 @@ shift || true
 # "|| true" evita que falle si no hay más argumentos.
 
 PORT=""
-# Puerto donde escuchará el servidor syslog.
-# Se asignará más adelante según el modo.
+# Puerto del modo tls.
+
+BASIC_PROTOCOL="udp"
+# Protocolo del modo basic: udp, tcp o both.
+
+BASIC_PORT=""
+# Puerto genérico del modo basic cuando se usa un solo protocolo
+# o cuando se quiere el mismo puerto para tcp y udp a la vez.
+
+BASIC_TCP_PORT=""
+# Puerto TCP del modo basic.
+
+BASIC_UDP_PORT=""
+# Puerto UDP del modo basic.
+
+BASIC_PROTOCOL_EXPLICIT="false"
+# Indica si el usuario ha especificado --protocol.
 
 ALLOWED_IPS=""
 # Lista de IPs permitidas por firewall, separadas por comas.
@@ -106,10 +121,39 @@ usage() {
   cat <<'EOF'
 Uso:
 
-  Modo basic:
+  Modo basic con valores por defecto:
+    sudo bash scripts/setup_syslog_server_v5.sh basic \
+      --allowed-ips 172.16.3.10,172.16.3.11
+
+    Si no indicas --protocol ni --port:
+      - se usa udp
+      - se usa el puerto 10514
+
+  Modo basic indicando protocolo:
     sudo bash scripts/setup_syslog_server_v5.sh basic \
       --allowed-ips 172.16.3.10,172.16.3.11 \
+      --protocol tcp \
+      [--port 10514] \
+      [--run-test]
+
+    Protocolos válidos:
+      --protocol udp
+      --protocol tcp
+      --protocol both
+
+  Modo basic con ambos protocolos y mismo puerto:
+    sudo bash scripts/setup_syslog_server_v5.sh basic \
+      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --protocol both \
       --port 10514 \
+      [--run-test]
+
+  Modo basic con ambos protocolos y puertos distintos:
+    sudo bash scripts/setup_syslog_server_v5.sh basic \
+      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --protocol both \
+      --tcp-port 10514 \
+      --udp-port 5514 \
       [--run-test]
 
   Modo tls:
@@ -133,86 +177,236 @@ require_root() {
   # EUID=0 significa root.
 }
 
+is_valid_port() {
+  local port="$1"
+  [[ "${port}" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 ))
+}
+
+resolve_basic_transport() {
+  [[ "${MODE}" == "basic" ]] || return 0
+
+  case "${BASIC_PROTOCOL}" in
+    udp|tcp|both) ;;
+    *)
+      die "En modo basic, --protocol debe ser udp, tcp o both"
+      ;;
+  esac
+
+  if [[ -n "${BASIC_PORT}" ]] && ! is_valid_port "${BASIC_PORT}"; then
+    die "Puerto no válido en --port: ${BASIC_PORT}"
+  fi
+
+  if [[ -n "${BASIC_TCP_PORT}" ]] && ! is_valid_port "${BASIC_TCP_PORT}"; then
+    die "Puerto no válido en --tcp-port: ${BASIC_TCP_PORT}"
+  fi
+
+  if [[ -n "${BASIC_UDP_PORT}" ]] && ! is_valid_port "${BASIC_UDP_PORT}"; then
+    die "Puerto no válido en --udp-port: ${BASIC_UDP_PORT}"
+  fi
+
+  if [[ "${BASIC_PROTOCOL}" != "both" ]] && [[ -n "${BASIC_TCP_PORT}" || -n "${BASIC_UDP_PORT}" ]]; then
+    die "Los parámetros --tcp-port y --udp-port solo pueden usarse con --protocol both"
+  fi
+
+  case "${BASIC_PROTOCOL}" in
+    udp)
+      if [[ -z "${BASIC_PORT}" ]]; then
+        BASIC_PORT="10514"
+        if [[ "${BASIC_PROTOCOL_EXPLICIT}" == "true" ]]; then
+          warn "No se indicó --port en modo basic con protocolo udp. Se usará UDP en el puerto 10514."
+        else
+          warn "No se indicó --protocol ni --port en modo basic. Se usará UDP en el puerto 10514."
+        fi
+      elif [[ "${BASIC_PROTOCOL_EXPLICIT}" == "false" ]]; then
+        warn "No se indicó --protocol en modo basic. Se usará UDP en el puerto ${BASIC_PORT}."
+      fi
+
+      BASIC_UDP_PORT="${BASIC_PORT}"
+      BASIC_TCP_PORT=""
+      ;;
+    tcp)
+      if [[ -z "${BASIC_PORT}" ]]; then
+        BASIC_PORT="10514"
+        warn "No se indicó --port en modo basic con protocolo tcp. Se usará TCP en el puerto 10514."
+      fi
+
+      BASIC_TCP_PORT="${BASIC_PORT}"
+      BASIC_UDP_PORT=""
+      ;;
+    both)
+      if [[ -z "${BASIC_PORT}" && -z "${BASIC_TCP_PORT}" && -z "${BASIC_UDP_PORT}" ]]; then
+        BASIC_TCP_PORT="10514"
+        BASIC_UDP_PORT="10514"
+        warn "No se indicaron puertos en modo basic con protocolo both. Se usarán TCP 10514 y UDP 10514."
+      else
+        if [[ -z "${BASIC_TCP_PORT}" ]]; then
+          if [[ -n "${BASIC_PORT}" ]]; then
+            BASIC_TCP_PORT="${BASIC_PORT}"
+          else
+            BASIC_TCP_PORT="10514"
+            warn "No se indicó --tcp-port en modo basic con protocolo both. Se usará TCP en el puerto 10514."
+          fi
+        fi
+
+        if [[ -z "${BASIC_UDP_PORT}" ]]; then
+          if [[ -n "${BASIC_PORT}" ]]; then
+            BASIC_UDP_PORT="${BASIC_PORT}"
+          else
+            BASIC_UDP_PORT="10514"
+            warn "No se indicó --udp-port en modo basic con protocolo both. Se usará UDP en el puerto 10514."
+          fi
+        fi
+      fi
+      ;;
+  esac
+
+  ok "Modo basic configurado con protocolo ${BASIC_PROTOCOL}."
+  case "${BASIC_PROTOCOL}" in
+    udp)
+      info "Puerto UDP: ${BASIC_UDP_PORT}"
+      ;;
+    tcp)
+      info "Puerto TCP: ${BASIC_TCP_PORT}"
+      ;;
+    both)
+      info "Puerto TCP: ${BASIC_TCP_PORT}"
+      info "Puerto UDP: ${BASIC_UDP_PORT}"
+      ;;
+  esac
+}
+
+show_listening_sockets() {
+  if [[ "${MODE}" == "basic" ]]; then
+    case "${BASIC_PROTOCOL}" in
+      udp)
+        ss -ulpn | grep -E ":${BASIC_UDP_PORT}\b"
+        ;;
+      tcp)
+        ss -tlpn | grep -E ":${BASIC_TCP_PORT}\b"
+        ;;
+      both)
+        ss -tulpn | grep -E ":(${BASIC_TCP_PORT}|${BASIC_UDP_PORT})\b"
+        ;;
+    esac
+  else
+    ss -tulpn | grep -E ":${PORT}\b"
+  fi
+}
+
+ensure_ufw_rules_for_port() {
+  local port="$1"
+  local proto="$2"
+  local ips=()
+
+  csv_to_array "${ALLOWED_IPS}" ips
+
+  ufw deny "${port}/${proto}" >/dev/null 2>&1 || true
+
+  for ip in "${ips[@]}"; do
+    if ufw status | grep -Fq "${ip}" && ufw status | grep -Fq "${port}/${proto}"; then
+      ok "Regla UFW ya presente para ${ip}:${port}/${proto}"
+    else
+      ufw allow from "${ip}" to any port "${port}" proto "${proto}" >/dev/null 2>&1 || true
+      ok "Regla UFW aplicada para ${ip}:${port}/${proto}"
+    fi
+  done
+}
+
 parse_args() {
   case "${MODE}" in
-    basic) PORT="10514" ;;
-    # Si el modo es basic, usa por defecto el puerto 10514.
-    tls)   PORT="6514" ;;
-    # Si el modo es tls, usa por defecto el puerto 6514.
-    *) usage; die "Modo no válido: ${MODE:-<vacío>}" ;;
-    # Si no es ninguno de los dos, muestra ayuda y falla.
+    basic)
+      BASIC_PROTOCOL="udp"
+      ;;
+    tls)
+      PORT="6514"
+      ;;
+    *)
+      usage
+      die "Modo no válido: ${MODE:-<vacío>}"
+      ;;
   esac
 
   while [[ $# -gt 0 ]]; do
-    # Recorre todos los argumentos que quedan.
-
     case "$1" in
       --allowed-ips)
         ALLOWED_IPS="${2:-}"
-        # Guarda la lista de IPs permitidas.
         shift 2
-        # Avanza dos posiciones: opción + valor.
+        ;;
+      --protocol)
+        [[ "${MODE}" == "basic" ]] || die "--protocol solo puede usarse en modo basic"
+        BASIC_PROTOCOL="${2:-}"
+        BASIC_PROTOCOL_EXPLICIT="true"
+        shift 2
         ;;
       --port)
-        PORT="${2:-}"
-        # Guarda el puerto indicado por el usuario.
+        if [[ "${MODE}" == "basic" ]]; then
+          BASIC_PORT="${2:-}"
+        else
+          PORT="${2:-}"
+        fi
+        shift 2
+        ;;
+      --tcp-port)
+        [[ "${MODE}" == "basic" ]] || die "--tcp-port solo puede usarse en modo basic"
+        BASIC_TCP_PORT="${2:-}"
+        shift 2
+        ;;
+      --udp-port)
+        [[ "${MODE}" == "basic" ]] || die "--udp-port solo puede usarse en modo basic"
+        BASIC_UDP_PORT="${2:-}"
         shift 2
         ;;
       --server-name)
         SERVER_NAME="${2:-}"
-        # Guarda el nombre principal del servidor para el certificado.
         shift 2
         ;;
       --server-ip)
         SERVER_IP="${2:-}"
-        # Guarda la IP del servidor para SAN.
         shift 2
         ;;
       --server-sans)
         SERVER_SANS="${2:-}"
-        # Guarda SANs extra del servidor.
         shift 2
         ;;
       --tls-clients)
         TLS_CLIENTS="${2:-}"
-        # Guarda la lista de clientes TLS permitidos.
         shift 2
         ;;
       --export-dir)
         EXPORT_DIR="${2:-}"
-        # Guarda el directorio de exportación de bundles TLS.
         shift 2
         ;;
       --regenerate-certs)
         REGENERATE_CERTS="true"
-        # Activa regeneración de certificados.
         shift
         ;;
       --run-test)
         RUN_TEST="true"
-        # Activa prueba local al final.
         shift
         ;;
       -h|--help)
         usage
-        # Muestra ayuda.
         exit 0
-        # Sale correctamente.
         ;;
       *)
         die "Opción no reconocida: $1"
-        # Falla si encuentra una opción desconocida.
         ;;
     esac
   done
 
   [[ -n "${ALLOWED_IPS}" ]] || die "Debes indicar --allowed-ips"
-  # Obliga a indicar IPs permitidas.
+
+  if [[ "${MODE}" == "basic" ]]; then
+    resolve_basic_transport
+  fi
 
   if [[ "${MODE}" == "tls" ]]; then
-    # Solo en modo TLS se exigen estos parámetros.
     [[ -n "${SERVER_IP}" ]] || die "En modo tls debes indicar --server-ip"
     [[ -n "${TLS_CLIENTS}" ]] || die "En modo tls debes indicar --tls-clients"
+
+    if ! is_valid_port "${PORT}"; then
+      die "Puerto no válido en modo tls: ${PORT}"
+    fi
   fi
 }
 
@@ -601,35 +795,43 @@ export_client_bundles() {
 write_basic_config() {
   info "Escribiendo configuración rsyslog en modo basic..."
   backup_file_if_exists "${REMOTE_CONF}"
-  # Hace backup de config previa basic si existe.
   backup_file_if_exists "${TLS_CONF}"
-  # Hace backup de config TLS previa si existe, por si vienes de ese modo.
 
   rm -f "${TLS_CONF}"
-  # Elimina la config TLS para evitar conflicto.
 
-  cat > "${REMOTE_CONF}" <<EOF
-# Carga el módulo de entrada TCP.
-module(load="imtcp")
+  {
+    echo "# Configuración basic de recepción syslog."
 
-# Plantilla dinámica basada en IP y programa.
-template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
+    if [[ "${BASIC_PROTOCOL}" == "udp" || "${BASIC_PROTOCOL}" == "both" ]]; then
+      echo 'module(load="imudp")'
+    fi
 
-# Define un ruleset separado para logs remotos.
-ruleset(name="remote_store") {
-    # Escribe el log en fichero dinámico usando la plantilla.
-    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
-    # Detiene el procesamiento de este mensaje dentro de este ruleset.
-    stop
-}
+    if [[ "${BASIC_PROTOCOL}" == "tcp" || "${BASIC_PROTOCOL}" == "both" ]]; then
+      echo 'module(load="imtcp")'
+    fi
 
-# Abre un input TCP en el puerto indicado y lo asocia al ruleset remoto.
-input(
-    type="imtcp"
-    port="${PORT}"
-    ruleset="remote_store"
-)
-EOF
+    echo
+    echo "# Plantilla dinámica basada en IP y programa."
+    echo "template(name=\"RemoteLogs\" type=\"string\" string=\"${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log\")"
+    echo
+    echo "# Define un ruleset separado para logs remotos."
+    echo 'ruleset(name="remote_store") {'
+    echo '    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
+    echo '    stop'
+    echo '}'
+    echo
+
+    if [[ "${BASIC_PROTOCOL}" == "udp" || "${BASIC_PROTOCOL}" == "both" ]]; then
+      echo "# Input UDP asociado al ruleset remoto."
+      echo "input(type=\"imudp\" port=\"${BASIC_UDP_PORT}\" ruleset=\"remote_store\")"
+      echo
+    fi
+
+    if [[ "${BASIC_PROTOCOL}" == "tcp" || "${BASIC_PROTOCOL}" == "both" ]]; then
+      echo "# Input TCP asociado al ruleset remoto."
+      echo "input(type=\"imtcp\" port=\"${BASIC_TCP_PORT}\" ruleset=\"remote_store\")"
+    fi
+  } > "${REMOTE_CONF}"
 
   ok "Configuración basic escrita."
 }
@@ -692,30 +894,25 @@ configure_firewall() {
   info "Configurando UFW..."
 
   ufw allow OpenSSH >/dev/null 2>&1 || true
-  # Permite SSH para no perder acceso.
 
-  ufw deny "${PORT}/tcp" >/dev/null 2>&1 || true
-  # Bloquea por defecto el puerto syslog TCP.
-
-  local ips=()
-  # Array temporal de IPs.
-  csv_to_array "${ALLOWED_IPS}" ips
-  # Convierte la lista CSV a array.
-
-  for ip in "${ips[@]}"; do
-    # Recorre las IPs permitidas.
-    if ufw status | grep -Fq "${ip}" && ufw status | grep -Fq "${PORT}/tcp"; then
-      ok "Regla UFW ya presente para ${ip}:${PORT}/tcp"
-      # Informa si ya parece estar la regla.
-    else
-      ufw allow from "${ip}" to any port "${PORT}" proto tcp >/dev/null 2>&1 || true
-      # Permite acceso desde esa IP al puerto.
-      ok "Regla UFW aplicada para ${ip}:${PORT}/tcp"
-    fi
-  done
+  if [[ "${MODE}" == "basic" ]]; then
+    case "${BASIC_PROTOCOL}" in
+      udp)
+        ensure_ufw_rules_for_port "${BASIC_UDP_PORT}" "udp"
+        ;;
+      tcp)
+        ensure_ufw_rules_for_port "${BASIC_TCP_PORT}" "tcp"
+        ;;
+      both)
+        ensure_ufw_rules_for_port "${BASIC_TCP_PORT}" "tcp"
+        ensure_ufw_rules_for_port "${BASIC_UDP_PORT}" "udp"
+        ;;
+    esac
+  else
+    ensure_ufw_rules_for_port "${PORT}" "tcp"
+  fi
 
   ufw --force enable >/dev/null 2>&1 || true
-  # Activa UFW si no lo estaba.
 
   ok "UFW configurado."
 }
@@ -749,7 +946,6 @@ run_optional_test() {
 
 write_report() {
   local report="/root/syslog_server_report.txt"
-  # Ruta del informe final.
 
   info "Generando informe final..."
 
@@ -757,7 +953,15 @@ write_report() {
     echo "======== SYSLOG SERVER REPORT ========"
     echo "Fecha:            $(date -Iseconds)"
     echo "Modo:             ${MODE}"
-    echo "Puerto:           ${PORT}"
+
+    if [[ "${MODE}" == "basic" ]]; then
+      echo "Protocol:         ${BASIC_PROTOCOL}"
+      echo "TCP port:         ${BASIC_TCP_PORT:-N/A}"
+      echo "UDP port:         ${BASIC_UDP_PORT:-N/A}"
+    else
+      echo "Puerto:           ${PORT}"
+    fi
+
     echo "IPs permitidas:   ${ALLOWED_IPS}"
     echo "Log dir:          ${LOG_DIR}"
     echo "Backup dir:       ${BACKUP_DIR}"
@@ -766,7 +970,7 @@ write_report() {
     echo "Prueba ejecutada: ${RUN_TEST}"
     echo
     echo "Escucha actual:"
-    ss -tulpn | grep -E ":${PORT}\b" || true
+    show_listening_sockets || true
     echo
     echo "Estado rsyslog:"
     systemctl is-active rsyslog || true
@@ -781,7 +985,6 @@ write_report() {
       echo "Server SAN extra: ${SERVER_SANS}"
     fi
   } > "${report}"
-  # Escribe el informe final.
 
   ok "Informe generado en ${report}"
 }
@@ -791,7 +994,15 @@ show_summary() {
   ok "Servidor configurado correctamente."
   echo "Resumen:"
   echo "  Modo:             ${MODE}"
-  echo "  Puerto:           ${PORT}"
+
+  if [[ "${MODE}" == "basic" ]]; then
+    echo "  Protocolo basic:  ${BASIC_PROTOCOL}"
+    echo "  Puerto TCP:       ${BASIC_TCP_PORT:-N/A}"
+    echo "  Puerto UDP:       ${BASIC_UDP_PORT:-N/A}"
+  else
+    echo "  Puerto TLS:       ${PORT}"
+  fi
+
   echo "  Log dir:          ${LOG_DIR}"
   echo "  IPs permitidas:   ${ALLOWED_IPS}"
   echo "  Backup dir:       ${BACKUP_DIR}"
@@ -810,7 +1021,7 @@ show_summary() {
   fi
 
   echo "Comprobación de escucha:"
-  ss -tulpn | grep -E ":${PORT}\b" || warn "No se pudo verificar la escucha del puerto ${PORT}"
+  show_listening_sockets || warn "No se pudo verificar la escucha configurada"
   echo
 }
 # Muestra resumen legible al final.

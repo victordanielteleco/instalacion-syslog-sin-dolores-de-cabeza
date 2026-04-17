@@ -56,6 +56,8 @@ jobs:
             echo "Status: active"
             echo "To                         Action      From"
             echo "10514/tcp                  DENY        Anywhere"
+            echo "10514/udp                  DENY        Anywhere"
+            echo "5514/udp                   DENY        Anywhere"
             echo "6514/tcp                   DENY        Anywhere"
           fi
           exit 0
@@ -70,6 +72,8 @@ jobs:
           cat > /mockbin/ss <<'EOF'
           #!/usr/bin/env bash
           echo "[MOCK ss] $@"
+          echo "udp UNCONN 0 0 *:10514 *:* users:(('rsyslogd',pid=123,fd=4))"
+          echo "udp UNCONN 0 0 *:5514 *:* users:(('rsyslogd',pid=123,fd=8))"
           echo "tcp LISTEN 0 128 *:10514 *:* users:(('rsyslogd',pid=123,fd=5))"
           echo "tcp LISTEN 0 128 *:6514 *:* users:(('rsyslogd',pid=123,fd=6))"
           exit 0
@@ -83,22 +87,69 @@ jobs:
 
           chmod +x /mockbin/*
 
-      - name: Ejecutar pruebas del servidor en modo basic
+      - name: Ejecutar pruebas del servidor en modo basic por defecto
         env:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh basic \
             --allowed-ips 172.16.3.10,172.16.3.11 \
-            --port 10514 \
             --run-test
 
           test -d /var/log/remote
           test -f /etc/rsyslog.d/10-remote.conf
           test -f /etc/logrotate.d/syslog-remote
           test -f /root/syslog_server_report.txt
-          grep -q 'module(load="imtcp")' /etc/rsyslog.d/10-remote.conf
+
+          grep -q 'module(load="imudp")' /etc/rsyslog.d/10-remote.conf
           grep -q 'ruleset(name="remote_store")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imudp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
           grep -q 'DynaFile="RemoteLogs"' /etc/rsyslog.d/10-remote.conf
+
+      - name: Ejecutar pruebas del servidor en modo basic por TCP
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh basic \
+            --allowed-ips 172.16.3.10 \
+            --protocol tcp \
+            --run-test
+
+          test -f /etc/rsyslog.d/10-remote.conf
+          grep -q 'module(load="imtcp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imtcp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
+
+      - name: Ejecutar pruebas del servidor en modo basic con ambos protocolos y mismo puerto
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh basic \
+            --allowed-ips 172.16.3.10 \
+            --protocol both \
+            --port 10514 \
+            --run-test
+
+          test -f /etc/rsyslog.d/10-remote.conf
+          grep -q 'module(load="imudp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'module(load="imtcp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imudp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imtcp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
+
+      - name: Ejecutar pruebas del servidor en modo basic con ambos protocolos y puertos distintos
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_server_v5.sh basic \
+            --allowed-ips 172.16.3.10 \
+            --protocol both \
+            --tcp-port 10514 \
+            --udp-port 5514 \
+            --run-test
+
+          test -f /etc/rsyslog.d/10-remote.conf
+          grep -q 'module(load="imudp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'module(load="imtcp")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imudp" port="5514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
+          grep -q 'input(type="imtcp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
 
       - name: Ejecutar pruebas del servidor en modo tls
         env:
@@ -133,17 +184,28 @@ jobs:
           test -f /etc/rsyslog-certs/kali01_ext.cnf
           grep -q 'extendedKeyUsage=clientAuth' /etc/rsyslog-certs/kali01_ext.cnf
 
-      - name: Ejecutar pruebas del cliente en modo basic
+      - name: Ejecutar pruebas del cliente en modo basic por defecto
         env:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_client_v5.sh basic \
             --server 172.16.3.2 \
-            --port 10514 \
             --run-test
 
           test -f /etc/rsyslog.d/20-forward.conf
           test -f /root/syslog_client_report.txt
+          grep -q '@172.16.3.2:10514' /etc/rsyslog.d/20-forward.conf
+
+      - name: Ejecutar pruebas del cliente en modo basic por TCP
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh basic \
+            --server 172.16.3.2 \
+            --protocol tcp \
+            --run-test
+
+          test -f /etc/rsyslog.d/20-forward.conf
           grep -q '@@172.16.3.2:10514' /etc/rsyslog.d/20-forward.conf
 
       - name: Preparar certificados ficticios para prueba cliente TLS

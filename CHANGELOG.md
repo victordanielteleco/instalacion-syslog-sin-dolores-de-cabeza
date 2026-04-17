@@ -2,6 +2,29 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.4] - 2026-04-16
+
+### Added
+- Soporte en `setup_syslog_server_v5.sh` para elegir en modo `basic` entre `udp`, `tcp` o `both`
+- Soporte en `setup_syslog_server_v5.sh` para usar un puerto común con `--port` o puertos separados con `--tcp-port` y `--udp-port` en modo `basic`
+- Soporte en `setup_syslog_client_v5.sh` para elegir en modo `basic` entre `udp` y `tcp`
+- Avisos informativos en servidor y cliente cuando en modo `basic` se aplican valores por defecto de protocolo o puerto
+- Documentación ampliada en `README.md` y `docs/despliegue-basico.md` para reflejar el nuevo comportamiento de `basic`
+- Casos de prueba nuevos en GitHub Actions para validar `basic` por defecto, `basic` por `tcp` y `basic` con `both`
+
+### Changed
+- En `setup_syslog_server_v5.sh`, el modo `basic` pasa a usar por defecto `udp` en el puerto `10514` cuando no se indica ni protocolo ni puerto
+- En `setup_syslog_client_v5.sh`, el modo `basic` pasa a usar por defecto `udp` en el puerto `10514` cuando no se indica ni protocolo ni puerto
+- `README.md` reorganizado para explicar de forma más clara cómo deben coincidir protocolo y puerto entre cliente y servidor
+- `docs/despliegue-tls.md` actualizado para reflejar que el puerto TLS también puede personalizarse con `--port`
+- `validate.yml` ampliado para comprobar referencias nuevas sobre `basic`, protocolos y puertos en la documentación
+- `test-installation.yml` ampliado para probar los nuevos casos de `udp`, `tcp` y `both` en modo `basic`
+
+### Notes
+- `tls` sigue usando TCP y mantiene como puerto por defecto `6514`
+- El cliente en `basic` elige un único protocolo por ejecución
+- El servidor en `basic` puede escuchar en ambos protocolos a la vez si se usa `--protocol both`
+
 ## [1.0.3] - 2026-04-15
 
 ### Fixed

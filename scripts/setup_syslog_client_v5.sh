@@ -41,6 +41,12 @@ SERVER=""
 PORT=""
 # Puerto remoto destino.
 
+BASIC_PROTOCOL="udp"
+# Protocolo del modo basic: udp o tcp.
+
+BASIC_PROTOCOL_EXPLICIT="false"
+# Indica si el usuario ha especificado --protocol.
+
 CA_FILE=""
 # Ruta local al certificado CA que copiaremos al cliente.
 
@@ -91,11 +97,24 @@ usage() {
   cat <<'EOF'
 Uso:
 
-  Modo basic:
+  Modo basic con valores por defecto:
+    sudo bash scripts/setup_syslog_client_v5.sh basic \
+      --server 172.16.3.2
+
+    Si no indicas --protocol ni --port:
+      - se usa udp
+      - se usa el puerto 10514
+
+  Modo basic indicando protocolo:
     sudo bash scripts/setup_syslog_client_v5.sh basic \
       --server 172.16.3.2 \
-      --port 10514 \
+      --protocol tcp \
+      [--port 10514] \
       [--run-test]
+
+    Protocolos válidos:
+      --protocol udp
+      --protocol tcp
 
   Modo tls:
     sudo bash scripts/setup_syslog_client_v5.sh tls \
@@ -118,81 +137,118 @@ require_root() {
   # Obliga a ejecutar como root.
 }
 
+is_valid_port() {
+  local port="$1"
+  [[ "${port}" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 ))
+}
+
+resolve_basic_transport() {
+  [[ "${MODE}" == "basic" ]] || return 0
+
+  case "${BASIC_PROTOCOL}" in
+    udp|tcp) ;;
+    *)
+      die "En modo basic, --protocol debe ser udp o tcp"
+      ;;
+  esac
+
+  if [[ -n "${PORT}" ]] && ! is_valid_port "${PORT}"; then
+    die "Puerto no válido en modo basic: ${PORT}"
+  fi
+
+  if [[ -z "${PORT}" ]]; then
+    PORT="10514"
+    if [[ "${BASIC_PROTOCOL_EXPLICIT}" == "true" ]]; then
+      warn "No se indicó --port en modo basic con protocolo ${BASIC_PROTOCOL}. Se usará el puerto 10514."
+    else
+      warn "No se indicó --protocol ni --port en modo basic. Se usará UDP en el puerto 10514."
+    fi
+  elif [[ "${BASIC_PROTOCOL_EXPLICIT}" == "false" ]]; then
+    warn "No se indicó --protocol en modo basic. Se usará UDP en el puerto ${PORT}."
+  fi
+
+  ok "Modo basic configurado con protocolo ${BASIC_PROTOCOL}."
+  info "Puerto destino: ${PORT}"
+}
+
 parse_args() {
   case "${MODE}" in
-    basic)   PORT="10514" ;;
-    # Puerto por defecto en modo basic.
-    tls)     PORT="6514" ;;
-    # Puerto por defecto en modo tls.
-    disable) ;;
-    # disable no necesita puerto por defecto.
-    *) usage; die "Modo no válido: ${MODE:-<vacío>}" ;;
-    # Si el modo no es válido, falla.
+    basic)
+      BASIC_PROTOCOL="udp"
+      PORT=""
+      ;;
+    tls)
+      PORT="6514"
+      ;;
+    disable)
+      ;;
+    *)
+      usage
+      die "Modo no válido: ${MODE:-<vacío>}"
+      ;;
   esac
 
   while [[ $# -gt 0 ]]; do
-    # Recorre argumentos restantes.
     case "$1" in
       --server)
         SERVER="${2:-}"
-        # Guarda servidor destino.
+        shift 2
+        ;;
+      --protocol)
+        [[ "${MODE}" == "basic" ]] || die "--protocol solo puede usarse en modo basic"
+        BASIC_PROTOCOL="${2:-}"
+        BASIC_PROTOCOL_EXPLICIT="true"
         shift 2
         ;;
       --port)
         PORT="${2:-}"
-        # Guarda puerto destino.
         shift 2
         ;;
       --ca)
         CA_FILE="${2:-}"
-        # Guarda ruta al fichero CA.
         shift 2
         ;;
       --cert)
         CERT_FILE="${2:-}"
-        # Guarda ruta al cert cliente.
         shift 2
         ;;
       --key)
         KEY_FILE="${2:-}"
-        # Guarda ruta a la clave cliente.
         shift 2
         ;;
       --peer)
         PEER_NAME="${2:-}"
-        # Guarda nombre esperado del certificado del servidor.
         shift 2
         ;;
       --run-test)
         RUN_TEST="true"
-        # Activa prueba final con logger.
         shift
         ;;
       -h|--help)
         usage
-        # Muestra ayuda.
         exit 0
-        # Sale correctamente.
         ;;
       *)
         die "Opción no reconocida: $1"
-        # Falla si encuentra una opción desconocida.
         ;;
     esac
   done
 
   if [[ "${MODE}" == "basic" ]]; then
-    # En basic hace falta servidor.
     [[ -n "${SERVER}" ]] || die "En modo basic debes indicar --server"
+    resolve_basic_transport
   fi
 
   if [[ "${MODE}" == "tls" ]]; then
-    # En tls hacen falta varios parámetros obligatorios.
     [[ -n "${SERVER}" ]]    || die "En modo tls debes indicar --server"
     [[ -n "${CA_FILE}" ]]   || die "En modo tls debes indicar --ca"
     [[ -n "${CERT_FILE}" ]] || die "En modo tls debes indicar --cert"
     [[ -n "${KEY_FILE}" ]]  || die "En modo tls debes indicar --key"
     [[ -n "${PEER_NAME}" ]] || die "En modo tls debes indicar --peer"
+
+    if ! is_valid_port "${PORT}"; then
+      die "Puerto no válido en modo tls: ${PORT}"
+    fi
   fi
 }
 
@@ -243,20 +299,30 @@ prepare_cert_dir() {
 }
 
 write_basic_config() {
-  info "Escribiendo configuración basic de forwarding TCP..."
+  info "Escribiendo configuración basic de forwarding..."
   backup_file_if_exists "${FORWARD_CONF}"
-  # Hace backup si ya existía config básica.
   backup_file_if_exists "${TLS_CONF}"
-  # Hace backup si existía config TLS, por si vienes de ese modo.
 
   rm -f "${TLS_CONF}"
-  # Borra config TLS para evitar conflicto.
+
+  local target_prefix=""
+  local protocol_label=""
+
+  case "${BASIC_PROTOCOL}" in
+    tcp)
+      target_prefix="@@"
+      protocol_label="TCP"
+      ;;
+    udp)
+      target_prefix="@"
+      protocol_label="UDP"
+      ;;
+  esac
 
   cat > "${FORWARD_CONF}" <<EOF
-# Reenvía todos los logs al servidor por TCP.
-*.* @@${SERVER}:${PORT}
+# Reenvía todos los logs al servidor por ${protocol_label}.
+*.* ${target_prefix}${SERVER}:${PORT}
 EOF
-  # Escribe configuración básica de forwarding.
 
   ok "Configuración basic escrita."
 }
@@ -378,7 +444,6 @@ run_optional_test() {
 
 write_report() {
   local report="/root/syslog_client_report.txt"
-  # Ruta del informe final.
 
   info "Generando informe final..."
 
@@ -387,6 +452,11 @@ write_report() {
     echo "Fecha:            $(date -Iseconds)"
     echo "Modo:             ${MODE}"
     echo "Destino:          ${SERVER:-N/A}"
+
+    if [[ "${MODE}" == "basic" ]]; then
+      echo "Protocol:         ${BASIC_PROTOCOL}"
+    fi
+
     echo "Puerto:           ${PORT:-N/A}"
     echo "Backup dir:       ${BACKUP_DIR}"
     echo "Cert dir:         ${CERT_DIR}"
@@ -398,7 +468,6 @@ write_report() {
     echo "Ficheros activos:"
     ls -l /etc/rsyslog.d/20-forward.conf /etc/rsyslog.d/20-tls.conf 2>/dev/null || true
   } > "${report}"
-  # Escribe informe del cliente.
 
   ok "Informe generado en ${report}"
 }
@@ -408,9 +477,15 @@ show_summary() {
   ok "Cliente configurado correctamente."
   echo "Resumen:"
   echo "  Modo:       ${MODE}"
+
+  if [[ "${MODE}" == "basic" ]]; then
+    echo "  Protocolo:  ${BASIC_PROTOCOL}"
+  fi
+
   if [[ "${MODE}" != "disable" ]]; then
     echo "  Destino:    ${SERVER}:${PORT}"
   fi
+
   echo "  Backup dir: ${BACKUP_DIR}"
   echo
 }
