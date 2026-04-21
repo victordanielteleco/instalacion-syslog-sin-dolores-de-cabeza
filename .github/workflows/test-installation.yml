@@ -51,15 +51,27 @@ jobs:
 
           cat > /mockbin/ufw <<'EOF'
           #!/usr/bin/env bash
+          echo "[MOCK ufw] $@" >> "${UFW_MOCK_LOG:-/tmp/ufw_mock_calls}"
           echo "[MOCK ufw] $@"
+
           if [ "$1" = "status" ]; then
-            echo "Status: active"
-            echo "To                         Action      From"
-            echo "10514/tcp                  DENY        Anywhere"
-            echo "10514/udp                  DENY        Anywhere"
-            echo "5514/udp                   DENY        Anywhere"
-            echo "6514/tcp                   DENY        Anywhere"
+            if [ "${UFW_MOCK_OLD_SYSLOG_RULES:-false}" = "true" ] && [ "${2:-}" = "numbered" ]; then
+              echo "Status: active"
+              echo "     To                         Action      From"
+              echo "[ 1] 10514/udp                  ALLOW IN    172.16.3.3"
+              echo "[ 2] 10514/udp                  DENY IN     Anywhere"
+              echo "[ 3] 22/tcp                     ALLOW IN    Anywhere"
+              echo "[ 4] 6514/tcp                   ALLOW IN    172.16.3.99"
+            else
+              echo "Status: active"
+              echo "To                         Action      From"
+              echo "10514/tcp                  DENY        Anywhere"
+              echo "10514/udp                  DENY        Anywhere"
+              echo "5514/udp                   DENY        Anywhere"
+              echo "6514/tcp                   DENY        Anywhere"
+            fi
           fi
+
           exit 0
           EOF
 
@@ -92,7 +104,7 @@ jobs:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh basic \
-            --allowed-ips 172.16.3.10,172.16.3.11 \
+            --allowed-ips 172.16.3.3,172.16.3.11 \
             --run-test
 
           test -d /var/log/remote
@@ -110,7 +122,7 @@ jobs:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh basic \
-            --allowed-ips 172.16.3.10 \
+            --allowed-ips 172.16.3.3 \
             --protocol tcp \
             --run-test
 
@@ -123,7 +135,7 @@ jobs:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh basic \
-            --allowed-ips 172.16.3.10 \
+            --allowed-ips 172.16.3.3 \
             --protocol both \
             --port 10514 \
             --run-test
@@ -139,7 +151,7 @@ jobs:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh basic \
-            --allowed-ips 172.16.3.10 \
+            --allowed-ips 172.16.3.3 \
             --protocol both \
             --tcp-port 10514 \
             --udp-port 5514 \
@@ -151,12 +163,39 @@ jobs:
           grep -q 'input(type="imudp" port="5514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
           grep -q 'input(type="imtcp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
 
+      - name: Probar reconfiguración del servidor limpiando reglas UFW antiguas
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          UFW_MOCK_OLD_SYSLOG_RULES: "true"
+        run: |
+          : > /tmp/ufw_mock_calls
+
+          printf '%s\n' \
+            '# Configuración basic previa de recepción syslog.' \
+            'module(load="imudp")' \
+            'input(type="imudp" port="10514" ruleset="remote_store")' \
+            > /etc/rsyslog.d/10-remote.conf
+
+          printf 'y\n' | bash scripts/setup_syslog_server_v5.sh basic \
+            --allowed-ips 172.16.3.11 \
+            --protocol udp \
+            --port 10514 \
+            > /tmp/reconfig_ufw_cleanup_output
+
+          grep -q 'Se van a eliminar reglas UFW antiguas relacionadas con este servicio syslog' /tmp/reconfig_ufw_cleanup_output
+          grep -q '¿Deseas continuar? \[y/N\]' /tmp/reconfig_ufw_cleanup_output
+          grep -q '\[MOCK ufw\] --force delete 1' /tmp/ufw_mock_calls
+          ! grep -q '\[MOCK ufw\] --force delete 2' /tmp/ufw_mock_calls
+          ! grep -q '\[MOCK ufw\] --force delete 3' /tmp/ufw_mock_calls
+          ! grep -q '\[MOCK ufw\] --force delete 4' /tmp/ufw_mock_calls
+          grep -q '\[MOCK ufw\] allow from 172.16.3.11 to any port 10514 proto udp comment syslog-server-v5' /tmp/ufw_mock_calls
+
       - name: Ejecutar pruebas del servidor en modo tls
         env:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh tls \
-            --allowed-ips 172.16.3.10 \
+            --allowed-ips 172.16.3.3 \
             --port 6514 \
             --server-name syslog.local \
             --server-ip 172.16.3.2 \
@@ -208,6 +247,19 @@ jobs:
           test -f /etc/rsyslog.d/20-forward.conf
           grep -q '@@172.16.3.2:10514' /etc/rsyslog.d/20-forward.conf
 
+      - name: Ejecutar pruebas del cliente en modo basic por UDP con puerto personalizado
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh basic \
+            --server 172.16.3.2 \
+            --protocol udp \
+            --port 5514 \
+            --run-test
+
+          test -f /etc/rsyslog.d/20-forward.conf
+          grep -q '@172.16.3.2:5514' /etc/rsyslog.d/20-forward.conf
+
       - name: Preparar certificados ficticios para prueba cliente TLS
         run: |
           mkdir -p /tmp/client-test
@@ -235,6 +287,23 @@ jobs:
           grep -q 'module(load="gtls")' /etc/rsyslog.d/20-tls.conf
           grep -q 'StreamDriverPermittedPeers=\["syslog.local"\]' /etc/rsyslog.d/20-tls.conf
 
+      - name: Ejecutar pruebas del cliente en modo tls con puerto personalizado
+        env:
+          PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          bash scripts/setup_syslog_client_v5.sh tls \
+            --server 172.16.3.2 \
+            --port 6515 \
+            --ca /tmp/client-test/ca.crt \
+            --cert /tmp/client-test/client.crt \
+            --key /tmp/client-test/client.key \
+            --peer syslog.local \
+            --run-test
+
+          test -f /etc/rsyslog.d/20-tls.conf
+          grep -q 'port="6515"' /etc/rsyslog.d/20-tls.conf
+          grep -q 'StreamDriverPermittedPeers=\["syslog.local"\]' /etc/rsyslog.d/20-tls.conf
+
       - name: Ejecutar pruebas del cliente en modo disable
         env:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -249,7 +318,7 @@ jobs:
           PATH: /mockbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           bash scripts/setup_syslog_server_v5.sh tls \
-            --allowed-ips 172.16.3.10 \
+            --allowed-ips 172.16.3.3 \
             --port 6514 \
             --server-name syslog.local \
             --server-ip 172.16.3.2 \

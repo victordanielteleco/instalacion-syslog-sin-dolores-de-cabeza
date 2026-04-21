@@ -20,7 +20,7 @@ Si no indicas `--port`, el modo `tls` usa `6514`.
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
   --run-test
@@ -30,7 +30,7 @@ sudo bash scripts/setup_syslog_server_v5.sh tls \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --port 6515 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
@@ -44,8 +44,42 @@ sudo bash scripts/setup_syslog_server_v5.sh tls \
 - genera certificados por cliente
 - configura rsyslog con TLS/mTLS
 - exporta bundles por cliente
+- limpia reglas `ALLOW` antiguas de UFW relacionadas con syslog, salvo que uses `--keep`
 - restringe acceso con UFW
 - genera informe final
+
+### Firewall e idempotencia
+
+Aunque TLS autentica clientes con certificado, UFW sigue limitando qué IPs pueden llegar al puerto del servidor.
+
+Por defecto, al reejecutar el servidor en modo `tls`, el script:
+
+- detecta el puerto TCP actual de TLS
+- detecta puertos syslog de configuraciones anteriores
+- avisa de que va a limpiar reglas `ALLOW` antiguas
+- pide confirmación interactiva
+- recrea sólo las reglas actuales de `--allowed-ips`
+
+Ejemplo de reconfiguración de IPs permitidas:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh tls \
+  --allowed-ips 172.16.3.11 \
+  --port 6514 \
+  --server-ip 172.16.3.2 \
+  --tls-clients kali01
+```
+
+Si necesitas conservar reglas anteriores:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh tls \
+  --allowed-ips 172.16.3.11 \
+  --port 6514 \
+  --server-ip 172.16.3.2 \
+  --tls-clients kali01 \
+  --keep
+```
 
 ---
 
@@ -165,7 +199,7 @@ La solución recomendada es regenerar certificados:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --server-ip NUEVA_IP \
   --tls-clients kali01 \
   --regenerate-certs
@@ -180,6 +214,8 @@ En el cliente:
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh disable
 ```
+
+El modo `disable` no acepta opciones adicionales; sólo elimina el forwarding remoto y mantiene rsyslog local.
 
 ---
 
@@ -206,6 +242,7 @@ Sirve cuando:
 - usar nombres coherentes para clientes
 - proteger claves privadas
 - restringir IPs con `--allowed-ips` aunque uses TLS
+- no usar `--keep` salvo que quieras conservar reglas UFW antiguas de forma explícita
 - rotar certificados periódicamente en entornos serios
 - usar el mismo puerto TLS en cliente y servidor
 

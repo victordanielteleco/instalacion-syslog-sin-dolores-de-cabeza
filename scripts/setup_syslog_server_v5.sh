@@ -13,12 +13,12 @@ set -euo pipefail
 #   Desplegar un servidor syslog en Ubuntu Server en modo basic o tls.
 #
 # Modos:
-#   basic -> recepción por TCP + filtrado UFW por IP
+#   basic -> recepción por UDP, TCP o ambos + filtrado UFW por IP
 #   tls   -> recepción por TCP + TLS/mTLS + certificados
 #
 # Uso:
-#   sudo bash scripts/setup_syslog_server_v5.sh basic --allowed-ips 172.16.3.10
-#   sudo bash scripts/setup_syslog_server_v5.sh tls --allowed-ips 172.16.3.10 --server-ip 172.16.3.2 --tls-clients kali01
+#   sudo bash scripts/setup_syslog_server_v5.sh basic --allowed-ips 172.16.3.3
+#   sudo bash scripts/setup_syslog_server_v5.sh tls --allowed-ips 172.16.3.3 --server-ip 172.16.3.2 --tls-clients kali01
 #
 # Compatibilidad:
 #   Ubuntu Server, Debian/Ubuntu recientes con systemd y rsyslog
@@ -98,6 +98,15 @@ REGENERATE_CERTS="false"
 RUN_TEST="false"
 # Si vale true, se lanza una prueba local con logger.
 
+KEEP_UFW_RULES="false"
+# Si vale true, conserva reglas ALLOW antiguas de UFW y solo añade las nuevas.
+
+UFW_RULE_COMMENT="syslog-server-v5"
+# Comentario usado en reglas UFW creadas por este script.
+
+UFW_CLEANUP_TARGETS=()
+# Lista de puerto/protocolo sobre los que se limpiarán reglas ALLOW antiguas.
+
 info()  { echo "[INFO]  $*"; }
 # Función para mostrar mensajes informativos.
 
@@ -123,7 +132,7 @@ Uso:
 
   Modo basic con valores por defecto:
     sudo bash scripts/setup_syslog_server_v5.sh basic \
-      --allowed-ips 172.16.3.10,172.16.3.11
+      --allowed-ips 172.16.3.3,172.16.3.11
 
     Si no indicas --protocol ni --port:
       - se usa udp
@@ -131,9 +140,10 @@ Uso:
 
   Modo basic indicando protocolo:
     sudo bash scripts/setup_syslog_server_v5.sh basic \
-      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --allowed-ips 172.16.3.3,172.16.3.11 \
       --protocol tcp \
       [--port 10514] \
+      [--keep] \
       [--run-test]
 
     Protocolos válidos:
@@ -143,22 +153,24 @@ Uso:
 
   Modo basic con ambos protocolos y mismo puerto:
     sudo bash scripts/setup_syslog_server_v5.sh basic \
-      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --allowed-ips 172.16.3.3,172.16.3.11 \
       --protocol both \
       --port 10514 \
+      [--keep] \
       [--run-test]
 
   Modo basic con ambos protocolos y puertos distintos:
     sudo bash scripts/setup_syslog_server_v5.sh basic \
-      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --allowed-ips 172.16.3.3,172.16.3.11 \
       --protocol both \
       --tcp-port 10514 \
       --udp-port 5514 \
+      [--keep] \
       [--run-test]
 
   Modo tls:
     sudo bash scripts/setup_syslog_server_v5.sh tls \
-      --allowed-ips 172.16.3.10,172.16.3.11 \
+      --allowed-ips 172.16.3.3,172.16.3.11 \
       --port 6514 \
       --server-name syslog.local \
       --server-ip 172.16.3.2 \
@@ -166,7 +178,13 @@ Uso:
       --tls-clients kali01,ubuntu01 \
       [--export-dir /root/syslog-client-bundles] \
       [--regenerate-certs] \
+      [--keep] \
       [--run-test]
+
+  Firewall:
+    Por defecto, antes de aplicar reglas nuevas, el script limpia reglas ALLOW
+    antiguas relacionadas con este servicio syslog para los puertos/protocolos
+    detectados. Usa --keep si quieres conservar reglas antiguas.
 EOF
 }
 # Función que muestra cómo usar el script.
@@ -293,22 +311,202 @@ show_listening_sockets() {
   fi
 }
 
+add_ufw_cleanup_target() {
+  local port="$1"
+  # Puerto que queremos revisar o limpiar en UFW.
+  local proto="$2"
+  # Protocolo asociado al puerto: tcp o udp.
+  local target="${port}/${proto}"
+  # Normaliza el objetivo como "puerto/protocolo", igual que lo muestra UFW.
+
+  [[ -n "${port}" && -n "${proto}" ]] || return 0
+  # Si falta algún valor, no añadimos nada. Esto evita targets incompletos.
+
+  for existing in "${UFW_CLEANUP_TARGETS[@]}"; do
+    # Evita duplicados cuando el puerto actual coincide con uno antiguo.
+    [[ "${existing}" == "${target}" ]] && return 0
+  done
+
+  UFW_CLEANUP_TARGETS+=("${target}")
+  # Añade el objetivo final a la lista global de limpieza.
+}
+
+collect_current_ufw_cleanup_targets() {
+  # Recoge los puertos/protocolos que el usuario quiere dejar activos
+  # en esta ejecución del script.
+  if [[ "${MODE}" == "basic" ]]; then
+    case "${BASIC_PROTOCOL}" in
+      udp)
+        add_ufw_cleanup_target "${BASIC_UDP_PORT}" "udp"
+        ;;
+      tcp)
+        add_ufw_cleanup_target "${BASIC_TCP_PORT}" "tcp"
+        ;;
+      both)
+        add_ufw_cleanup_target "${BASIC_TCP_PORT}" "tcp"
+        add_ufw_cleanup_target "${BASIC_UDP_PORT}" "udp"
+        ;;
+    esac
+  else
+    add_ufw_cleanup_target "${PORT}" "tcp"
+    # TLS siempre escucha sobre TCP.
+  fi
+}
+
+collect_existing_ufw_cleanup_targets() {
+  local port
+  # Puerto encontrado al leer configuraciones rsyslog anteriores.
+
+  if [[ -f "${REMOTE_CONF}" ]]; then
+    # Si existe una configuración basic anterior, extraemos los puertos UDP
+    # y TCP que quedaron configurados en rsyslog antes de sobrescribirla.
+    while IFS= read -r port; do
+      add_ufw_cleanup_target "${port}" "udp"
+    done < <(sed -n 's/.*input(type="imudp".*port="\([0-9][0-9]*\)".*/\1/p' "${REMOTE_CONF}")
+
+    while IFS= read -r port; do
+      add_ufw_cleanup_target "${port}" "tcp"
+    done < <(sed -n 's/.*input(type="imtcp".*port="\([0-9][0-9]*\)".*/\1/p' "${REMOTE_CONF}")
+  fi
+
+  if [[ -f "${TLS_CONF}" ]]; then
+    # Si existe una configuración TLS anterior, extraemos su puerto TCP.
+    # Esto cubre cambios de tls a basic, cambios de puerto o reinstalaciones.
+    while IFS= read -r port; do
+      add_ufw_cleanup_target "${port}" "tcp"
+    done < <(sed -n 's/.*port="\([0-9][0-9]*\)".*/\1/p' "${TLS_CONF}")
+  fi
+}
+
+collect_ufw_cleanup_targets() {
+  UFW_CLEANUP_TARGETS=()
+
+  collect_current_ufw_cleanup_targets
+  # Añade los puertos/protocolos que se van a dejar configurados.
+
+  collect_existing_ufw_cleanup_targets
+  # Añade puertos/protocolos de configuraciones anteriores para poder retirar
+  # reglas ALLOW obsoletas cuando cambia el protocolo, el puerto o el modo.
+}
+
+collect_ufw_allow_rule_numbers_for_cleanup() {
+  local status
+  # Salida completa de "ufw status numbered".
+  local target
+  # Objetivo "puerto/protocolo" que se está evaluando.
+  local port
+  local proto
+  local line
+  # Línea individual del estado numerado de UFW.
+  local number
+  # Número de regla UFW que luego se puede borrar de forma segura.
+
+  status="$(ufw status numbered 2>/dev/null || true)"
+  # Si UFW no está activo o no puede listar reglas, no abortamos aquí.
+  # La creación de reglas nuevas se intenta más adelante.
+
+  for target in "${UFW_CLEANUP_TARGETS[@]}"; do
+    port="${target%/*}"
+    proto="${target#*/}"
+
+    while IFS= read -r line; do
+      if [[ "${line}" =~ ^\[\ *([0-9]+)\]\ +${port}/${proto}([[:space:]]|$) ]]; then
+        number="${BASH_REMATCH[1]}"
+        # Guardamos el número antes de otra regex porque Bash sobrescribe
+        # BASH_REMATCH en cada comparación.
+
+        if [[ "${line}" =~ [[:space:]]ALLOW([[:space:]]|$) ]]; then
+          echo "${number}"
+          # Sólo devolvemos reglas ALLOW. Las DENY, SSH u otros servicios
+          # no deben borrarse durante esta limpieza.
+        fi
+      fi
+    done <<< "${status}"
+  done
+}
+
+confirm_ufw_cleanup() {
+  local answer
+  # Respuesta interactiva del usuario.
+
+  warn "Se van a eliminar reglas UFW antiguas relacionadas con este servicio syslog para dejar solo las IPs actuales definidas en --allowed-ips."
+  warn "Si quieres conservar reglas antiguas, vuelve a ejecutar el script con --keep."
+  printf "¿Deseas continuar? [y/N] "
+
+  if ! read -r answer; then
+    # En ejecución no interactiva, fallar es más seguro que borrar reglas sin
+    # confirmación explícita.
+    die "No se pudo leer confirmación. Limpieza UFW cancelada."
+  fi
+
+  case "${answer}" in
+    y|Y|yes|YES|s|S|si|SI|sí|SÍ)
+      ;;
+    *)
+      die "Limpieza UFW cancelada por el usuario."
+      ;;
+  esac
+}
+
+cleanup_old_ufw_allow_rules() {
+  local rule_numbers=()
+  # Números de reglas UFW antiguas que se van a eliminar.
+  local number
+  # Número individual procesado en el bucle de borrado.
+
+  if [[ "${KEEP_UFW_RULES}" == "true" ]]; then
+    info "Opción --keep detectada: se conservarán reglas ALLOW antiguas de UFW."
+    return 0
+  fi
+
+  warn "Se comprobarán reglas ALLOW antiguas de UFW para los puertos/protocolos syslog gestionados por este script."
+
+  mapfile -t rule_numbers < <(collect_ufw_allow_rule_numbers_for_cleanup | sort -n -u)
+  # Ordena y elimina duplicados antes de borrar. Un mismo puerto/protocolo puede
+  # aparecer como objetivo actual y como objetivo heredado de una configuración previa.
+
+  if [[ "${#rule_numbers[@]}" -eq 0 ]]; then
+    ok "No se encontraron reglas ALLOW antiguas de UFW que limpiar."
+    return 0
+  fi
+
+  confirm_ufw_cleanup
+
+  while IFS= read -r number; do
+    [[ -n "${number}" ]] || continue
+
+    if ufw --force delete "${number}" >/dev/null 2>&1; then
+      ok "Regla UFW antigua eliminada: número ${number}"
+    else
+      die "No se pudo eliminar la regla UFW antigua número ${number}."
+    fi
+  done < <(printf '%s\n' "${rule_numbers[@]}" | sort -rn)
+  # Borramos en orden descendente porque UFW renumera las reglas después de
+  # cada delete. Si borrásemos de menor a mayor, podríamos eliminar otra regla.
+}
+
 ensure_ufw_rules_for_port() {
   local port="$1"
+  # Puerto syslog que se va a permitir.
   local proto="$2"
+  # Protocolo asociado al puerto.
   local ips=()
+  # IPs permitidas convertidas desde el CSV recibido por --allowed-ips.
 
   csv_to_array "${ALLOWED_IPS}" ips
 
   ufw deny "${port}/${proto}" >/dev/null 2>&1 || true
+  # Mantiene una regla DENY general para el puerto/protocolo. Las reglas ALLOW
+  # específicas por IP se añaden después y son las que abren acceso real.
 
   for ip in "${ips[@]}"; do
-    if ufw status | grep -Fq "${ip}" && ufw status | grep -Fq "${port}/${proto}"; then
-      ok "Regla UFW ya presente para ${ip}:${port}/${proto}"
-    else
+    if ! ufw allow from "${ip}" to any port "${port}" proto "${proto}" comment "${UFW_RULE_COMMENT}" >/dev/null 2>&1; then
       ufw allow from "${ip}" to any port "${port}" proto "${proto}" >/dev/null 2>&1 || true
-      ok "Regla UFW aplicada para ${ip}:${port}/${proto}"
+      # Algunas versiones antiguas de UFW no soportan "comment". Si falla,
+      # reintentamos sin comentario para mantener compatibilidad.
     fi
+
+    ok "Regla UFW aplicada para ${ip}:${port}/${proto}"
   done
 }
 
@@ -380,6 +578,10 @@ parse_args() {
         REGENERATE_CERTS="true"
         shift
         ;;
+      --keep)
+        KEEP_UFW_RULES="true"
+        shift
+        ;;
       --run-test)
         RUN_TEST="true"
         shift
@@ -437,20 +639,22 @@ backup_file_if_exists() {
 csv_to_array() {
   local csv="$1"
   # Guarda el CSV recibido.
-  local -n out_arr="$2"
+  local out_arr_name="$2"
+  # Guarda el nombre del array de salida.
+  local -n result_array_ref="${out_arr_name}"
   # Crea una referencia al array de salida.
 
   IFS=',' read -r -a raw <<< "${csv}"
   # Divide el CSV por comas y lo mete en el array raw.
 
-  out_arr=()
+  result_array_ref=()
   # Inicializa el array de salida vacío.
 
   for item in "${raw[@]}"; do
     # Recorre cada elemento del CSV.
     item="$(echo "${item}" | xargs)"
     # Elimina espacios al principio y al final.
-    [[ -n "${item}" ]] && out_arr+=("${item}")
+    [[ -n "${item}" ]] && result_array_ref+=("${item}")
     # Si no está vacío, lo añade al array final.
   done
 }
@@ -895,6 +1099,9 @@ configure_firewall() {
 
   ufw allow OpenSSH >/dev/null 2>&1 || true
 
+  cleanup_old_ufw_allow_rules
+  # Por defecto deja el firewall en estado deseado antes de recrear reglas.
+
   if [[ "${MODE}" == "basic" ]]; then
     case "${BASIC_PROTOCOL}" in
       udp)
@@ -1032,6 +1239,9 @@ main() {
 
   parse_args "$@"
   # Procesa todos los argumentos.
+
+  collect_ufw_cleanup_targets
+  # Captura objetivos UFW actuales y anteriores antes de sobrescribir configs.
 
   install_packages
   # Instala dependencias.

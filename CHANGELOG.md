@@ -2,6 +2,34 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.5] - 2026-04-21
+
+### Added
+- Opción `--keep` en `setup_syslog_server_v5.sh` para conservar reglas antiguas de UFW de forma explícita
+- Confirmación interactiva antes de eliminar reglas `ALLOW` antiguas de UFW relacionadas con syslog
+- Documentación en `README.md`, `docs/despliegue-basico.md` y `docs/despliegue-tls.md` sobre la limpieza por defecto de UFW y el uso de `--keep`
+- Caso de prueba en `test-installation.yml` para validar una reconfiguración del servidor que limpia reglas UFW antiguas
+- Casos de prueba en `test-installation.yml` para cliente `basic` por UDP con puerto personalizado y cliente `tls` con puerto personalizado
+- Entrada `.codex` en `.gitignore` para evitar subir artefactos locales del entorno por accidente
+
+### Changed
+- `setup_syslog_server_v5.sh` ahora trata UFW como estado deseado por defecto: limpia reglas `ALLOW` antiguas del servicio syslog y recrea sólo las reglas actuales de `--allowed-ips`
+- La limpieza UFW del servidor tiene en cuenta puertos/protocolos actuales y también configuraciones previas de `rsyslog`, cubriendo cambios de IPs, protocolo, puerto o modo
+- `setup_syslog_client_v5.sh` documenta correctamente que el modo `basic` reenvía por UDP o TCP
+- `setup_syslog_client_v5.sh` valida de forma estricta las opciones permitidas por modo para evitar parámetros aceptados pero ignorados
+- Comentarios internos ampliados en las funciones sensibles de UFW y en la validación de opciones del cliente para facilitar revisión por el equipo
+- La documentación aclara que el modo `disable` del cliente no acepta opciones adicionales
+
+### Fixed
+- Corregida la falsa idempotencia de UFW en el servidor: las IPs antiguas ya no permanecen permitidas por defecto tras reejecutar el script con otra lista en `--allowed-ips`
+- Mejorada la detección de reglas UFW a eliminar para borrar sólo reglas `ALLOW` relacionadas con syslog y no reglas `DENY`, SSH u otros servicios
+- Corregida la ayuda/comentario del cliente que describía `basic` como TCP aunque el comportamiento real y documentado permite UDP o TCP
+
+### Notes
+- `--keep` conserva el comportamiento anterior de sólo añadir reglas nuevas sin borrar reglas antiguas
+- El modo `disable` del cliente elimina forwarding remoto, mantiene `rsyslog` local y no ejecuta pruebas con `logger`
+- Las pruebas funcionales se validaron con rutas temporales y mocks para no modificar UFW real, `/etc` real ni servicios del sistema
+
 ## [1.0.4] - 2026-04-16
 
 ### Added

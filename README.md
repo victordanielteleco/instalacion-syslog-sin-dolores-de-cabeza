@@ -144,6 +144,19 @@ Recepción por TCP + TLS/mTLS + certificados.
 
 - puerto por defecto: `6514`
 
+#### Firewall en el servidor
+
+Por defecto, cada ejecución del script del servidor deja UFW en el estado deseado para syslog:
+
+- busca reglas `ALLOW` antiguas relacionadas con los puertos/protocolos syslog gestionados
+- avisa antes de borrarlas
+- pide confirmación interactiva
+- recrea únicamente las reglas actuales de `--allowed-ips`
+
+Esto evita que queden permitidas IPs antiguas al cambiar `--allowed-ips`, protocolo, puerto o modo.
+
+Si necesitas conservar reglas antiguas, ejecuta el servidor con `--keep`.
+
 ### Cliente
 
 #### `basic`
@@ -473,7 +486,7 @@ Modo `basic`:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --run-test
 ```
 
@@ -481,7 +494,7 @@ Modo `tls`:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
   --run-test
@@ -531,7 +544,7 @@ Si no indicas nada más:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --run-test
 ```
 
@@ -579,7 +592,7 @@ Los logs remotos se guardan con esta estructura:
 Ejemplo:
 
 ```text
-/var/log/remote/172.16.3.10/sudo.log
+/var/log/remote/172.16.3.3/sudo.log
 ```
 
 Esto facilita mucho localizar qué equipo generó cada evento y qué servicio lo produjo.
@@ -640,7 +653,7 @@ Si no indicas `--protocol` ni `--port`:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --run-test
 ```
 
@@ -648,7 +661,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol tcp \
   --run-test
 ```
@@ -657,7 +670,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol udp \
   --port 5514 \
   --run-test
@@ -667,7 +680,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol both \
   --port 10514 \
   --run-test
@@ -677,7 +690,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol both \
   --tcp-port 10514 \
   --udp-port 5514 \
@@ -695,8 +708,40 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 - crea directorios remotos automáticamente por IP
 - configura logrotate
 - crea backups de configuraciones previas
+- limpia reglas `ALLOW` antiguas de UFW relacionadas con syslog, salvo que uses `--keep`
 - restringe acceso con UFW según las IPs permitidas y el protocolo usado
 - genera un informe final
+
+#### Reconfigurar IPs permitidas en UFW
+
+Si vuelves a ejecutar el servidor con una lista distinta en `--allowed-ips`, el comportamiento por defecto es limpiar las reglas `ALLOW` antiguas del servicio syslog y crear sólo las actuales.
+
+Ejemplo:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.11 \
+  --protocol udp \
+  --port 10514
+```
+
+Antes de borrar reglas, el script muestra un aviso y pregunta:
+
+```text
+[WARN]  Se van a eliminar reglas UFW antiguas relacionadas con este servicio syslog para dejar solo las IPs actuales definidas en --allowed-ips.
+[WARN]  Si quieres conservar reglas antiguas, vuelve a ejecutar el script con --keep.
+¿Deseas continuar? [y/N]
+```
+
+Para añadir reglas nuevas sin borrar reglas antiguas:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.11 \
+  --protocol udp \
+  --port 10514 \
+  --keep
+```
 
 ### 💻 Paso 3: cliente
 
@@ -801,7 +846,7 @@ Puerto por defecto en `tls`: `6514`
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
   --run-test
@@ -811,7 +856,7 @@ Si quieres cambiar el puerto TLS:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --port 6515 \
   --server-ip 172.16.3.2 \
   --tls-clients kali01 \
@@ -825,6 +870,7 @@ sudo bash scripts/setup_syslog_server_v5.sh tls \
 - genera certificados por cliente
 - configura rsyslog con TLS/mTLS
 - exporta bundles por cliente
+- limpia reglas `ALLOW` antiguas de UFW relacionadas con syslog, salvo que uses `--keep`
 - aplica filtrado por IP en UFW
 - genera informe final
 
@@ -917,7 +963,7 @@ Arranca el servidor en basic por defecto:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --run-test
 ```
 
@@ -947,7 +993,7 @@ Servidor:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol tcp \
   --run-test
 ```
@@ -1044,6 +1090,17 @@ Revisa también:
 - que cliente y servidor usen el **mismo protocolo**
 - que cliente y servidor usen el **mismo puerto**
 
+### ❌ UFW conserva IPs antiguas
+
+Con la versión actual, el comportamiento por defecto del script del servidor es limpiar reglas `ALLOW` antiguas de syslog antes de aplicar las reglas nuevas.
+
+Si sigues viendo IPs antiguas en `sudo ufw status`, revisa:
+
+- que hayas confirmado la limpieza interactiva
+- que no hayas usado `--keep`
+- que la regla antigua corresponda al mismo servicio syslog gestionado por el script
+- que no exista una regla manual más amplia fuera de los puertos/protocolos syslog configurados
+
 ### ❌ El servidor escucha en UDP y el cliente está enviando por TCP
 
 Ejemplo de error típico:
@@ -1107,7 +1164,7 @@ La recomendación es regenerar certificados:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh tls \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --server-ip NUEVA_IP \
   --tls-clients kali01 \
   --regenerate-certs
@@ -1134,6 +1191,7 @@ sudo bash scripts/setup_syslog_client_v5.sh disable
 ```
 
 Esto elimina el forwarding remoto, pero mantiene el syslog local del sistema.
+El modo `disable` no usa `--server`, `--port`, `--protocol` ni `--run-test`.
 
 ### ❌ Quiero volver atrás
 
@@ -1198,8 +1256,10 @@ No. El cliente sigue manteniendo sus logs locales. El modo `disable` solo quita 
 Sí. Ejemplo:
 
 ```bash
---allowed-ips 172.16.3.10,172.16.3.11
+--allowed-ips 172.16.3.3,172.16.3.11
 ```
+
+Al reejecutar el script del servidor con otra lista, UFW se limpia por defecto para que sólo queden las IPs actuales en las reglas de syslog. Si quieres conservar reglas antiguas, usa `--keep`.
 
 ### ¿Puedo usar varios clientes TLS?
 

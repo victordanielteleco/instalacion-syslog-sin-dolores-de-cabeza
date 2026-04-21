@@ -3,6 +3,7 @@
 *.swp
 *.swo
 .DS_Store
+.codex
 
 # Python cache por si se usa algo auxiliar en el futuro
 __pycache__/

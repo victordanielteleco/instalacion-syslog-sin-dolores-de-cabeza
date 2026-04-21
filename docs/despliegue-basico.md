@@ -40,7 +40,7 @@ Si no indicas `--protocol` ni `--port`:
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --run-test
 ```
 
@@ -48,7 +48,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol tcp \
   --run-test
 ```
@@ -57,7 +57,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol udp \
   --port 5514 \
   --run-test
@@ -67,7 +67,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol both \
   --port 10514 \
   --run-test
@@ -77,7 +77,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 
 ```bash
 sudo bash scripts/setup_syslog_server_v5.sh basic \
-  --allowed-ips 172.16.3.10 \
+  --allowed-ips 172.16.3.3 \
   --protocol both \
   --tcp-port 10514 \
   --udp-port 5514 \
@@ -95,8 +95,40 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 - crea directorios remotos automáticamente
 - configura logrotate
 - crea backups de configuración
+- limpia reglas `ALLOW` antiguas de UFW relacionadas con syslog, salvo que uses `--keep`
 - restringe acceso con UFW
 - genera informe final
+
+### Firewall e idempotencia
+
+Cuando reejecutas el script del servidor, UFW se trata como estado deseado para el servicio syslog.
+
+Por defecto, antes de crear reglas nuevas, el script:
+
+- detecta el puerto y protocolo syslog configurados ahora
+- detecta puertos y protocolos syslog de una configuración anterior
+- avisa de que va a limpiar reglas `ALLOW` antiguas
+- pide confirmación interactiva
+- vuelve a crear sólo las reglas actuales de `--allowed-ips`
+
+Ejemplo de reconfiguración de IPs permitidas:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.11 \
+  --protocol udp \
+  --port 10514
+```
+
+Si quieres conservar reglas anteriores y sólo añadir las nuevas, usa `--keep`:
+
+```bash
+sudo bash scripts/setup_syslog_server_v5.sh basic \
+  --allowed-ips 172.16.3.11 \
+  --protocol udp \
+  --port 10514 \
+  --keep
+```
 
 ---
 
@@ -170,7 +202,7 @@ tail -f /var/log/remote/*/*.log
 Ejemplo:
 
 ```text
-/var/log/remote/172.16.3.10/sudo.log
+/var/log/remote/172.16.3.3/sudo.log
 ```
 
 ---
@@ -210,6 +242,16 @@ Revisar también:
 - que cliente y servidor usan el mismo protocolo
 - que cliente y servidor usan el mismo puerto
 - que `/var/log/remote` esté montado si quieres usar el segundo disco
+
+### ❌ UFW sigue mostrando IPs antiguas
+
+Por defecto, el script limpia reglas `ALLOW` antiguas del servicio syslog antes de aplicar las actuales.
+
+Si ves IPs antiguas tras reconfigurar:
+
+- confirma la limpieza cuando el script pregunte
+- comprueba que no hayas usado `--keep`
+- revisa si la regla antigua es una regla manual más amplia que no pertenece al puerto/protocolo syslog configurado
 
 ### ❌ Servidor por defecto en UDP y cliente por TCP
 
@@ -254,6 +296,8 @@ En el cliente:
 ```bash
 sudo bash scripts/setup_syslog_client_v5.sh disable
 ```
+
+El modo `disable` no acepta opciones adicionales; sólo elimina el forwarding remoto y mantiene rsyslog local.
 
 ---
 

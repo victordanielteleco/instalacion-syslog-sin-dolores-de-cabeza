@@ -13,7 +13,7 @@ set -euo pipefail
 #   Configurar un cliente Kali/Debian/Ubuntu para reenviar logs a un servidor syslog.
 #
 # Modos:
-#   basic   -> forwarding TCP
+#   basic   -> forwarding UDP o TCP
 #   tls     -> forwarding TCP + TLS
 #   disable -> elimina forwarding remoto manteniendo logs locales
 #
@@ -99,7 +99,8 @@ Uso:
 
   Modo basic con valores por defecto:
     sudo bash scripts/setup_syslog_client_v5.sh basic \
-      --server 172.16.3.2
+      --server 172.16.3.2 \
+      [--run-test]
 
     Si no indicas --protocol ni --port:
       - se usa udp
@@ -128,6 +129,8 @@ Uso:
 
   Desactivar forwarding:
     sudo bash scripts/setup_syslog_client_v5.sh disable
+
+    El modo disable no acepta opciones adicionales.
 EOF
 }
 # Muestra ayuda.
@@ -191,6 +194,8 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --server)
+        # disable no necesita servidor porque precisamente elimina el forwarding.
+        [[ "${MODE}" == "basic" || "${MODE}" == "tls" ]] || die "--server solo puede usarse en modo basic o tls"
         SERVER="${2:-}"
         shift 2
         ;;
@@ -201,26 +206,38 @@ parse_args() {
         shift 2
         ;;
       --port)
+        # El puerto sólo tiene sentido cuando se envía a un servidor remoto.
+        [[ "${MODE}" == "basic" || "${MODE}" == "tls" ]] || die "--port solo puede usarse en modo basic o tls"
         PORT="${2:-}"
         shift 2
         ;;
       --ca)
+        # La CA sólo se usa en TLS para validar el certificado del servidor.
+        [[ "${MODE}" == "tls" ]] || die "--ca solo puede usarse en modo tls"
         CA_FILE="${2:-}"
         shift 2
         ;;
       --cert)
+        # El certificado cliente sólo se presenta en conexiones mTLS.
+        [[ "${MODE}" == "tls" ]] || die "--cert solo puede usarse en modo tls"
         CERT_FILE="${2:-}"
         shift 2
         ;;
       --key)
+        # La clave privada acompaña al certificado cliente en TLS/mTLS.
+        [[ "${MODE}" == "tls" ]] || die "--key solo puede usarse en modo tls"
         KEY_FILE="${2:-}"
         shift 2
         ;;
       --peer)
+        # El peer esperado protege frente a certificados de servidor con otro CN/SAN.
+        [[ "${MODE}" == "tls" ]] || die "--peer solo puede usarse en modo tls"
         PEER_NAME="${2:-}"
         shift 2
         ;;
       --run-test)
+        # disable no genera eventos de prueba porque no hay forwarding remoto activo.
+        [[ "${MODE}" != "disable" ]] || die "--run-test no puede usarse en modo disable"
         RUN_TEST="true"
         shift
         ;;
