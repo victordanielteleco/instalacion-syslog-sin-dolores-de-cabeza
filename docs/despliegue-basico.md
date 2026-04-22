@@ -110,6 +110,7 @@ Por defecto, antes de crear reglas nuevas, el script:
 - avisa de que va a limpiar reglas `ALLOW` antiguas
 - pide confirmación interactiva
 - vuelve a crear sólo las reglas actuales de `--allowed-ips`
+- coloca las reglas `ALLOW` específicas antes del `DENY` general del puerto/protocolo
 
 Ejemplo de reconfiguración de IPs permitidas:
 

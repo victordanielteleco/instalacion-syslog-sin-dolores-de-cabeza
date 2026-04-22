@@ -188,7 +188,7 @@ jobs:
           ! grep -q '\[MOCK ufw\] --force delete 2' /tmp/ufw_mock_calls
           ! grep -q '\[MOCK ufw\] --force delete 3' /tmp/ufw_mock_calls
           ! grep -q '\[MOCK ufw\] --force delete 4' /tmp/ufw_mock_calls
-          grep -q '\[MOCK ufw\] allow from 172.16.3.11 to any port 10514 proto udp comment syslog-server-v5' /tmp/ufw_mock_calls
+          grep -q '\[MOCK ufw\] insert 2 allow from 172.16.3.11 to any port 10514 proto udp comment syslog-server-v5' /tmp/ufw_mock_calls
 
       - name: Ejecutar pruebas del servidor en modo tls
         env:

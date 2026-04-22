@@ -152,6 +152,7 @@ Por defecto, cada ejecución del script del servidor deja UFW en el estado desea
 - avisa antes de borrarlas
 - pide confirmación interactiva
 - recrea únicamente las reglas actuales de `--allowed-ips`
+- coloca las reglas `ALLOW` específicas antes del `DENY` general del puerto/protocolo
 
 Esto evita que queden permitidas IPs antiguas al cambiar `--allowed-ips`, protocolo, puerto o modo.
 
@@ -709,7 +710,7 @@ sudo bash scripts/setup_syslog_server_v5.sh basic \
 - configura logrotate
 - crea backups de configuraciones previas
 - limpia reglas `ALLOW` antiguas de UFW relacionadas con syslog, salvo que uses `--keep`
-- restringe acceso con UFW según las IPs permitidas y el protocolo usado
+- restringe acceso con UFW según las IPs permitidas y el protocolo usado, dejando los `ALLOW` antes del `DENY` general
 - genera un informe final
 
 #### Reconfigurar IPs permitidas en UFW

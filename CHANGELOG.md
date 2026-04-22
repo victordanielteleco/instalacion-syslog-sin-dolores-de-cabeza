@@ -2,6 +2,14 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.6] - 2026-04-22
+
+### Fixed
+- Corregido el orden de reglas UFW del servidor: las reglas `ALLOW` específicas por IP se insertan antes del `DENY` general del mismo puerto/protocolo, evitando que UFW bloquee clientes permitidos.
+
+### Changed
+- Ampliada la prueba simulada de reconfiguración UFW para validar explícitamente la inserción de `ALLOW` antes de un `DENY` existente.
+
 ## [1.0.5] - 2026-04-21
 
 ### Added

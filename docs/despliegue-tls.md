@@ -59,6 +59,7 @@ Por defecto, al reejecutar el servidor en modo `tls`, el script:
 - avisa de que va a limpiar reglas `ALLOW` antiguas
 - pide confirmación interactiva
 - recrea sólo las reglas actuales de `--allowed-ips`
+- coloca las reglas `ALLOW` específicas antes del `DENY` general del puerto TCP
 
 Ejemplo de reconfiguración de IPs permitidas:
 

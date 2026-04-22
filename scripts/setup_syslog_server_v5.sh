@@ -485,6 +485,59 @@ cleanup_old_ufw_allow_rules() {
   # cada delete. Si borrásemos de menor a mayor, podríamos eliminar otra regla.
 }
 
+first_ufw_deny_rule_number_for_target() {
+  local port="$1"
+  # Puerto syslog que se está configurando.
+  local proto="$2"
+  # Protocolo asociado al puerto.
+  local line
+  # Línea individual de "ufw status numbered".
+  local number
+  # Número de la primera regla DENY encontrada para ese puerto/protocolo.
+
+  while IFS= read -r line; do
+    if [[ "${line}" =~ ^\[\ *([0-9]+)\]\ +${port}/${proto}([[:space:]]|$) ]]; then
+      number="${BASH_REMATCH[1]}"
+      # Guardamos el número antes de evaluar otra expresión regular.
+
+      if [[ "${line}" =~ [[:space:]]DENY([[:space:]]|$) ]]; then
+        echo "${number}"
+        return 0
+      fi
+    fi
+  done < <(ufw status numbered 2>/dev/null || true)
+}
+
+apply_ufw_allow_rule() {
+  local ip="$1"
+  # IP cliente que se va a permitir.
+  local port="$2"
+  # Puerto syslog que se va a permitir.
+  local proto="$3"
+  # Protocolo asociado al puerto.
+  local insert_at
+  # Posición de la primera regla DENY general para insertar antes.
+
+  insert_at="$(first_ufw_deny_rule_number_for_target "${port}" "${proto}")"
+
+  if [[ -n "${insert_at}" ]]; then
+    # UFW evalúa reglas en orden. Si ya existe un DENY general, el ALLOW
+    # específico debe insertarse antes para que tenga efecto.
+    if ufw insert "${insert_at}" allow from "${ip}" to any port "${port}" proto "${proto}" comment "${UFW_RULE_COMMENT}" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    ufw insert "${insert_at}" allow from "${ip}" to any port "${port}" proto "${proto}" >/dev/null 2>&1
+    return $?
+  fi
+
+  if ufw allow from "${ip}" to any port "${port}" proto "${proto}" comment "${UFW_RULE_COMMENT}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  ufw allow from "${ip}" to any port "${port}" proto "${proto}" >/dev/null 2>&1
+}
+
 ensure_ufw_rules_for_port() {
   local port="$1"
   # Puerto syslog que se va a permitir.
@@ -495,19 +548,17 @@ ensure_ufw_rules_for_port() {
 
   csv_to_array "${ALLOWED_IPS}" ips
 
-  ufw deny "${port}/${proto}" >/dev/null 2>&1 || true
-  # Mantiene una regla DENY general para el puerto/protocolo. Las reglas ALLOW
-  # específicas por IP se añaden después y son las que abren acceso real.
-
   for ip in "${ips[@]}"; do
-    if ! ufw allow from "${ip}" to any port "${port}" proto "${proto}" comment "${UFW_RULE_COMMENT}" >/dev/null 2>&1; then
-      ufw allow from "${ip}" to any port "${port}" proto "${proto}" >/dev/null 2>&1 || true
-      # Algunas versiones antiguas de UFW no soportan "comment". Si falla,
-      # reintentamos sin comentario para mantener compatibilidad.
+    if ! apply_ufw_allow_rule "${ip}" "${port}" "${proto}"; then
+      die "No se pudo aplicar la regla UFW para ${ip}:${port}/${proto}"
     fi
 
     ok "Regla UFW aplicada para ${ip}:${port}/${proto}"
   done
+
+  ufw deny "${port}/${proto}" >/dev/null 2>&1 || true
+  # Mantiene una regla DENY general para el puerto/protocolo. Se añade después
+  # de los ALLOW específicos, o los ALLOW se insertan delante si ya existía.
 }
 
 parse_args() {
