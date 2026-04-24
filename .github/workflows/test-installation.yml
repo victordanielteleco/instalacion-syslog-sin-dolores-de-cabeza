@@ -15,7 +15,7 @@ jobs:
       - name: Instalar herramientas base del contenedor
         run: |
           apt-get update
-          apt-get install -y bash coreutils grep sed gawk findutils passwd openssl util-linux
+          apt-get install -y bash coreutils grep sed gawk findutils passwd openssl util-linux rsyslog
 
       - name: Clonar repositorio
         uses: actions/checkout@v4
@@ -116,6 +116,45 @@ jobs:
           grep -q 'ruleset(name="remote_store")' /etc/rsyslog.d/10-remote.conf
           grep -q 'input(type="imudp" port="10514" ruleset="remote_store")' /etc/rsyslog.d/10-remote.conf
           grep -q 'DynaFile="RemoteLogs"' /etc/rsyslog.d/10-remote.conf
+          grep -q '%FROMHOST-IP:::secpath-replace%' /etc/rsyslog.d/10-remote.conf
+          grep -q '%PROGRAMNAME:::secpath-replace%' /etc/rsyslog.d/10-remote.conf
+          grep -q 'unknown-program.log' /etc/rsyslog.d/10-remote.conf
+          grep -q 'if ($programname == "") then {' /etc/rsyslog.d/10-remote.conf
+
+      - name: Validar fallback unknown-program.log con rsyslog real
+        run: |
+          mkdir -p /tmp/rsyslog-test-work
+          rm -f /tmp/rsyslog-fallback-input.log /tmp/rsyslog-fallback-test.conf /tmp/rsyslog-fallback-test.pid
+          find /var/log/remote -type f -name '*.log' -delete || true
+
+          {
+            echo 'global(workDirectory="/tmp/rsyslog-test-work")'
+            echo 'module(load="imfile")'
+            sed '/^module(load="imudp")$/d; /^module(load="imtcp")$/d; /^input(type="imudp"/d; /^input(type="imtcp"/d' /etc/rsyslog.d/10-remote.conf
+            echo 'input(type="imfile" File="/tmp/rsyslog-fallback-input.log" Tag="/app/test[123]:" Ruleset="remote_store" Severity="info" Facility="local0")'
+          } > /tmp/rsyslog-fallback-test.conf
+
+          /usr/sbin/rsyslogd -N1 -f /tmp/rsyslog-fallback-test.conf
+
+          /usr/sbin/rsyslogd -n -i /tmp/rsyslog-fallback-test.pid -f /tmp/rsyslog-fallback-test.conf &
+          RSYSLOG_TEST_PID=$!
+          trap 'kill "${RSYSLOG_TEST_PID}" 2>/dev/null || true; wait "${RSYSLOG_TEST_PID}" 2>/dev/null || true' EXIT
+
+          sleep 1
+          printf '%s\n' 'MENSAJE_SIN_PROGRAMNAME' >> /tmp/rsyslog-fallback-input.log
+
+          for _ in $(seq 1 10); do
+            UNKNOWN_FILE="$(find /var/log/remote -type f -name 'unknown-program.log' -print -quit)"
+            if [ -n "${UNKNOWN_FILE}" ]; then
+              break
+            fi
+            sleep 1
+          done
+
+          UNKNOWN_FILE="$(find /var/log/remote -type f -name 'unknown-program.log' -print -quit)"
+          test -n "${UNKNOWN_FILE}"
+          test -z "$(find /var/log/remote -type f -name '.log' -print -quit)"
+          grep -q 'MENSAJE_SIN_PROGRAMNAME' "${UNKNOWN_FILE}"
 
       - name: Ejecutar pruebas del servidor en modo basic por TCP
         env:
@@ -213,6 +252,9 @@ jobs:
           grep -q 'module(load="gtls")' /etc/rsyslog.d/10-tls.conf
           grep -q 'StreamDriverAuthMode="x509/name"' /etc/rsyslog.d/10-tls.conf
           grep -q 'PermittedPeer=' /etc/rsyslog.d/10-tls.conf
+          grep -q '%FROMHOST-IP:::secpath-replace%' /etc/rsyslog.d/10-tls.conf
+          grep -q '%PROGRAMNAME:::secpath-replace%' /etc/rsyslog.d/10-tls.conf
+          grep -q 'unknown-program.log' /etc/rsyslog.d/10-tls.conf
 
       - name: Comprobar contenido SAN de extensiones OpenSSL generadas
         run: |

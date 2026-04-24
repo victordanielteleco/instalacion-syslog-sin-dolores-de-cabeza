@@ -2,6 +2,16 @@
 
 Todos los cambios importantes de este proyecto se documentan en este archivo.
 
+## [1.0.7] - 2026-04-24
+
+### Fixed
+- Evitada la creación de ficheros ocultos `.log` en el servidor cuando un emisor remoto no aporta `programname`; ahora esos eventos se guardan en `unknown-program.log`
+- Endurecida la generación de rutas dinámicas de `rsyslog` con `secpath-replace` para no depender de valores de mensaje no saneados en `DynaFile`
+
+### Changed
+- Documentado en `README.md` y `docs/despliegue-basico.md` el fallback `unknown-program.log` para mensajes sin `programname`
+- Añadida una prueba automática en `test-installation.yml` que valida con `rsyslogd` real el caso `programname` vacío
+
 ## [1.0.6] - 2026-04-22
 
 ### Fixed

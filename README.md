@@ -596,6 +596,12 @@ Ejemplo:
 /var/log/remote/172.16.3.3/sudo.log
 ```
 
+Si un emisor no envía `programname`, el servidor usará este fallback:
+
+```text
+/var/log/remote/<IP>/unknown-program.log
+```
+
 Esto facilita mucho localizar qué equipo generó cada evento y qué servicio lo produjo.
 
 ### Importante

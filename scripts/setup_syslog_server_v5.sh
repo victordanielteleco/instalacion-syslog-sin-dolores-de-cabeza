@@ -1066,12 +1066,18 @@ write_basic_config() {
     fi
 
     echo
-    echo "# Plantilla dinámica basada en IP y programa."
-    echo "template(name=\"RemoteLogs\" type=\"string\" string=\"${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log\")"
+    echo "# Plantilla dinámica basada en IP y programa con pathname saneado."
+    echo "template(name=\"RemoteLogs\" type=\"string\" string=\"${LOG_DIR}/%FROMHOST-IP:::secpath-replace%/%PROGRAMNAME:::secpath-replace%.log\")"
+    echo "# Fallback para evitar ficheros ocultos cuando programname llega vacío."
+    echo "template(name=\"RemoteLogsNoProgram\" type=\"string\" string=\"${LOG_DIR}/%FROMHOST-IP:::secpath-replace%/unknown-program.log\")"
     echo
     echo "# Define un ruleset separado para logs remotos."
     echo 'ruleset(name="remote_store") {'
-    echo '    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
+    echo '    if ($programname == "") then {'
+    echo '        action(type="omfile" DynaFile="RemoteLogsNoProgram" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
+    echo '    } else {'
+    echo '        action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
+    echo '    }'
     echo '    stop'
     echo '}'
     echo
@@ -1119,13 +1125,19 @@ global(
   DefaultNetstreamDriverKeyFile="${CERT_DIR}/server.key"
 )
 
-# Plantilla dinámica por IP y programa.
-template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP%/%PROGRAMNAME%.log")
+# Plantilla dinámica por IP y programa con pathname saneado.
+template(name="RemoteLogs" type="string" string="${LOG_DIR}/%FROMHOST-IP:::secpath-replace%/%PROGRAMNAME:::secpath-replace%.log")
+# Fallback para evitar ficheros ocultos cuando programname llega vacío.
+template(name="RemoteLogsNoProgram" type="string" string="${LOG_DIR}/%FROMHOST-IP:::secpath-replace%/unknown-program.log")
 
 # Ruleset separado para logs remotos recibidos por TLS.
 ruleset(name="remote_store_tls") {
-    # Escritura en fichero con creación automática de directorios.
-    action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
+    # Escritura en fichero con fallback cuando programname no viene informado.
+    if ($programname == "") then {
+        action(type="omfile" DynaFile="RemoteLogsNoProgram" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
+    } else {
+        action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
+    }
     # Para el procesamiento dentro del ruleset.
     stop
 }

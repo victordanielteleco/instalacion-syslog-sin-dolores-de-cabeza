@@ -206,6 +206,12 @@ Ejemplo:
 /var/log/remote/172.16.3.3/sudo.log
 ```
 
+Si un emisor no envía `programname`, el servidor guardará el evento en:
+
+```text
+/var/log/remote/<IP>/unknown-program.log
+```
+
 ---
 
 ## 🛠️ 5. Problemas comunes
