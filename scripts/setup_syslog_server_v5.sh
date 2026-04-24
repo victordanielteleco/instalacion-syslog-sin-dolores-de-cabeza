@@ -1073,7 +1073,7 @@ write_basic_config() {
     echo
     echo "# Define un ruleset separado para logs remotos."
     echo 'ruleset(name="remote_store") {'
-    echo '    if ($programname == "") then {'
+    echo "    if (\$programname == \"\") then {"
     echo '        action(type="omfile" DynaFile="RemoteLogsNoProgram" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
     echo '    } else {'
     echo '        action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")'
@@ -1133,7 +1133,7 @@ template(name="RemoteLogsNoProgram" type="string" string="${LOG_DIR}/%FROMHOST-I
 # Ruleset separado para logs remotos recibidos por TLS.
 ruleset(name="remote_store_tls") {
     # Escritura en fichero con fallback cuando programname no viene informado.
-    if ($programname == "") then {
+    if (\$programname == "") then {
         action(type="omfile" DynaFile="RemoteLogsNoProgram" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
     } else {
         action(type="omfile" DynaFile="RemoteLogs" createDirs="on" DirCreateMode="0750" FileCreateMode="0640")
